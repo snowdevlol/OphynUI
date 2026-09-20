@@ -8,6 +8,7 @@ local Images = import("images/images")
 local Notification = import("components/window/notification")
 local Dialog = import("components/window/dialog")
 local Variables = import("variables")
+local Jnkie = import("utilities/jnkie")
 
 local FONT = Font.new(Images.FONT, Enum.FontWeight.Regular, Enum.FontStyle.Normal)
 local FONT_BOLD = Font.new(Images.FONT, Enum.FontWeight.Bold, Enum.FontStyle.Normal)
@@ -626,6 +627,7 @@ local function applyTheme(name, time)
 end
 
 local UI = {}
+UI.Jnkie = Jnkie
 
 function UI.new(options)
 	local cfg = {}
@@ -676,6 +678,72 @@ function UI.new(options)
 	if HAS_WEBSITE then
 		WEBSITE_DISPLAY = WEBSITE_LINK:gsub("^https?://", "")
 		WEBSITE_URL = WEBSITE_LINK:match("^https?://") and WEBSITE_LINK or ("https://" .. WEBSITE_LINK)
+	end
+
+	-- KeySystem = { Key = {"1234", "5678"} or function(key) -> valid, reason, URL = "...", SaveKey = false }
+	local KEY_CFG = cfg.KeySystem or {}
+	local KEY_LIST = KEY_CFG.Key
+	if KEY_LIST == nil then
+		KEY_LIST = { "key" }
+	end
+	local KEY_URL = tostring(KEY_CFG.URL or "")
+	local KEY_SAVE = asBool(KEY_CFG.SaveKey, false)
+
+	local function isCallable(v)
+		if type(v) == "function" then
+			return true
+		end
+		local mt = type(v) == "table" and getmetatable(v)
+		return mt ~= nil and mt.__call ~= nil
+	end
+
+	-- Auto-detect a Jnkie.Validator() adapter so "Get a key" can call
+	-- Jnkie:GetKeyLink() on its own, with no KeySystem.URL required.
+	local KEY_JNKIE = type(KEY_LIST) == "table" and KEY_LIST.__isJnkie and KEY_LIST.__instance or nil
+
+	local function safeIsFile(path)
+		if not isfile then
+			return false
+		end
+		local ok, res = pcall(isfile, path)
+		return ok and res == true
+	end
+
+	local function safeReadFile(path)
+		if not readfile then
+			return nil
+		end
+		local ok, res = pcall(readfile, path)
+		if ok and type(res) == "string" then
+			return res
+		end
+		return nil
+	end
+
+	local function safeWriteFile(path, contents)
+		if not writefile then
+			return false
+		end
+		if FOLDER and FOLDER ~= "" and isfolder and makefolder then
+			local ok, exists = pcall(isfolder, FOLDER)
+			if ok and not exists then
+				pcall(makefolder, FOLDER)
+			end
+		end
+		return pcall(writefile, path, contents) == true
+	end
+
+	local KEY_FILE = (FOLDER and FOLDER ~= "" and (FOLDER .. "/key.txt")) or "ophynkey.txt"
+
+	local SAVED_KEY = nil
+	if KEY_SAVE and safeIsFile(KEY_FILE) then
+		local contents = safeReadFile(KEY_FILE)
+		if contents then
+			contents = contents:match("^%s*(.-)%s*$")
+			if contents ~= "" then
+				SAVED_KEY = contents
+			end
+		end
 	end
 
 	local state = { ready = false, popupOpen = false, closing = false }
@@ -1257,17 +1325,25 @@ function UI.new(options)
 	closeBtn.MouseButton1Click:Connect(dialog.show)
 
 	local LINKS = {
-		getKey = WEBSITE_URL,
+		getKey = KEY_URL ~= "" and KEY_URL or WEBSITE_URL,
 		discord = INVITE_URL,
 		website = WEBSITE_URL,
 	}
 
-	local VALID_KEYS = {
-		"key",
-	}
-
 	local function validateKey(key)
-		for k, v in pairs(VALID_KEYS) do
+		if isCallable(KEY_LIST) then
+			local ok, valid, reason = pcall(KEY_LIST, key)
+			if not ok then
+				warn("[" .. HUB_NAME .. "] KeySystem.Key validator error: " .. tostring(valid))
+				return false
+			end
+			if valid ~= true and reason then
+				warn("[" .. HUB_NAME .. "] key rejected: " .. tostring(reason))
+			end
+			return valid == true
+		end
+
+		for k, v in pairs(KEY_LIST or {}) do
 			if type(k) == "number" then
 				if tostring(v):match("^%s*(.-)%s*$") == key then
 					return true
@@ -1276,7 +1352,7 @@ function UI.new(options)
 				return true
 			end
 		end
-		warn("[" .. HUB_NAME .. "] key not found in VALID_KEYS: '" .. key .. "'")
+		warn("[" .. HUB_NAME .. "] key not found in KeySystem.Key: '" .. key .. "'")
 		return false
 	end
 
@@ -1293,14 +1369,41 @@ function UI.new(options)
 		end
 	end
 
+	local fetchingKeyLink = false
+
 	getKey.MouseButton1Click:Connect(function()
-		if LINKS.getKey == "" then
-			if state.ready and not state.closing then
-				notify("No link set", "The key link isn't set.", "warn", "link")
-			end
+		if not state.ready or state.closing then
 			return
 		end
-		copyLink(LINKS.getKey, "Key link", "link")
+
+		if LINKS.getKey ~= "" then
+			copyLink(LINKS.getKey, "Key link", "link")
+			return
+		end
+
+		if KEY_JNKIE then
+			if fetchingKeyLink then
+				return
+			end
+			fetchingKeyLink = true
+			task.spawn(function()
+				local link, err = KEY_JNKIE:GetKeyLink()
+				fetchingKeyLink = false
+				if not state.ready or state.closing then
+					return
+				end
+				if link then
+					copyLink(link, "Key link", "link")
+				elseif err == "RATE_LIMITED" then
+					notify("Slow down", "Wait 5 minutes before requesting another link.", "warn", "link", 5)
+				else
+					notify("Couldn't get a link", tostring(err or "Unknown error"), "warn", "link", 5)
+				end
+			end)
+			return
+		end
+
+		notify("No link set", "The key link isn't set.", "warn", "link")
 	end)
 
 	local httpRequest = request or http_request or (syn and syn.request) or (http and http.request)
@@ -1612,6 +1715,10 @@ function UI.new(options)
 		statusValue.Text = "Key valid"
 		setRole(statusValue, "TextColor3", "success")
 
+		if KEY_SAVE then
+			safeWriteFile(KEY_FILE, key)
+		end
+
 		fade(spinnerItems, 0, 0.25)
 		task.wait(0.25)
 		spin:Cancel()
@@ -1800,6 +1907,12 @@ function UI.new(options)
 		task.wait(0.3)
 		spin:Cancel()
 		state.ready = true
+
+		if SAVED_KEY and not checkingKey then
+			keyBox.Text = SAVED_KEY
+			task.wait(0.15)
+			runKeyCheck(SAVED_KEY)
+		end
 	end)
 
 	return root
