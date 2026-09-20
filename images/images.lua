@@ -3,9 +3,9 @@
 
 local Images = {
 	FONT = "rbxassetid://12187365364",
-	KEY = "",
-	SUBMIT = "",
-	LINK = "",
+	KEY = "rbxassetid://96510194465420",
+	SUBMIT = "rbxassetid://113692007244654",
+	LINK = "rbxassetid://114238209622913",
 	DISCORD = "rbxassetid://126843387725536",
 	GLOW = "rbxassetid://8992230677",
 	LOGO = "rbxassetid://103859712365480",
