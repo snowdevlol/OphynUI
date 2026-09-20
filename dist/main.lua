@@ -1993,7 +1993,7 @@ function UI.new(options)
 
 		statusValue.Text = "Key valid"
 		setRole(statusValue, "TextColor3", "success")
-		checkText.Text = isSavedKey and "Salved Key Found!" or "Correct Key!"
+		checkText.Text = isSavedKey and "Saved Key Found!" or "Correct Key!"
 
 		if KEY_SAVE then
 			safeWriteFile(KEY_FILE, key)
