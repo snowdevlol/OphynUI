@@ -8,11 +8,12 @@ local Images = {
 	LINK = "rbxassetid://114238209622913",
 	DISCORD = "rbxassetid://127255077587058",
 	GLOW = "rbxassetid://8992230677",
-	LOGO = "rbxassetid://103859712365480",
+	LOGO = "rbxassetid://111673746737789",
 	CLOSE_ICON = "rbxassetid://110786993356448",
 	MOON_ICON = "rbxassetid://83380517901735",
 	SHADOW = "rbxassetid://6014261993",
 	GAME_PLACEHOLDER = "rbxassetid://74584987850498",
+	CART = "rbxassetid://rbxassetid://128420521375441", -- shopping cart icon, shown instead of KEY when shopbt is set
 }
 
 return Images
