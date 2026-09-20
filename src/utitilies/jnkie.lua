@@ -27,11 +27,20 @@ end
 function Jnkie.new(config)
 	config = config or {}
 	local self = setmetatable({}, Jnkie)
+	self.__isJnkieInstance = true
 	self.service = config.Service or config.service
 	self.identifier = config.Identifier or config.identifier
 	self.provider = config.Provider or config.provider or "Mixed"
 	self.client = nil
 	self.loadError = nil
+
+	if not self.service or self.service == "" then
+		warn("[Jnkie] Service is missing — check your dashboard for the exact name")
+	end
+	if not self.identifier or self.identifier == "" then
+		warn("[Jnkie] Identifier is missing — check your dashboard for your user ID")
+	end
+
 	return self
 end
 
@@ -52,6 +61,19 @@ function Jnkie:_client()
 	return lib
 end
 
+local function isSuccess(result)
+	if type(result) ~= "table" then
+		return false
+	end
+	if result.valid == true or result.success == true then
+		return true
+	end
+	if result.message == "KEY_VALID" or result.message == "KEYLESS" then
+		return true
+	end
+	return false
+end
+
 function Jnkie:CheckKey(key)
 	local lib = self:_client()
 	if not lib then
@@ -62,8 +84,9 @@ function Jnkie:CheckKey(key)
 		return { valid = false, error = tostring(result) }
 	end
 	if type(result) ~= "table" then
-		return { valid = false, error = "UNEXPECTED_RESPONSE" }
+		return { valid = false, error = "UNEXPECTED_RESPONSE: " .. tostring(result) }
 	end
+	result.valid = isSuccess(result)
 	return result
 end
 
@@ -85,7 +108,7 @@ function Jnkie:Validator()
 		__isJnkie = true,
 		__instance = instance,
 	}, {
-		__call__ = function(_, key)
+		__call = function(_, key)
 			local result = instance:CheckKey(key)
 			local reason = result and (result.error or result.message)
 			return result and result.valid == true, reason
