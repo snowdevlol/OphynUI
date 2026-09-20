@@ -1,8 +1,8 @@
 return {
 	-- Window Config
-	Title = "Airflow",
+	Title = "Ophyn",
 	Description = "Key System",
-	Logo = "", -- rbxassetid
+	Logo = "rbxassetid://111673746737789", -- rbxassetid
 	Theme = "Plant-Dark",
 	Folder = "Ophyn-KSY",
 
