@@ -40,6 +40,7 @@ def main():
         "function KeySystem.new(options)\n"
         f'\treturn import("{ENTRY}").new(options)\n'
         "end\n\n"
+        'KeySystem.Jnkie = import("utilities/jnkie")\n\n'
         "return KeySystem\n"
     )
 
