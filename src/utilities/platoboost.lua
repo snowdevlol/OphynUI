@@ -1,17 +1,3 @@
--- Platoboost adapter for Ophyn.
---
---   KeySystem = {
---       API = {
---           {
---               Type = "platoboost",
---               ServiceId = 1234,               -- your Platoboost service id
---               Secret = "platoboost-secret",   -- your Platoboost secret
---           },
---       },
---   }
---
--- Based on Platoboost's official Lua library. The SHA-256 below is copied
--- from it unchanged; the requests use HttpService for JSON.
 
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
@@ -25,7 +11,8 @@ end)()
 local Platoboost = {}
 Platoboost.__index = Platoboost
 
-local HOSTS = { "https://api.platoboost.com", "https://api.platoboost.net" }
+-- Tried in this order; the first one that answers is used.
+local HOSTS = { "https://api.platoboost.app", "https://api.platoboost.com", "https://api.platoboost.net" }
 local LINK_CACHE_TIME = 10 * 60
 local RATE_LIMIT_MESSAGE = "you are being rate limited, please wait 20 seconds and try again."
 local BAD_STATUS_MESSAGE = "server returned an invalid status code, please try again later."
@@ -79,7 +66,15 @@ function Platoboost.new(config)
 	end
 	self.useNonce = useNonce ~= false
 
-	self.host = nil
+	-- Optional: force one API host, e.g. Host = "https://api.platoboost.app"
+	local host = config.Host or config.host
+	if type(host) == "string" and host ~= "" then
+		host = host:gsub("/+$", "")
+		if not host:match("^https?://") then
+			host = "https://" .. host
+		end
+		self.host = host
+	end
 	self.identifier = nil
 	self.requestSending = false
 	self.cachedLink = nil
@@ -95,20 +90,23 @@ function Platoboost.new(config)
 	return self
 end
 
--- .com first, .net as the fallback (same behavior the official library intends)
+-- Picks the first host that answers /public/connectivity (200 or 429).
+-- If none answers, the first one in HOSTS is used.
 function Platoboost:_host()
 	if self.host then
 		return self.host
 	end
 	local req = getRequestFunction()
 	if req then
-		local ok, res = pcall(req, { Url = HOSTS[1] .. "/public/connectivity", Method = "GET" })
-		if ok and type(res) == "table" and (res.StatusCode == 200 or res.StatusCode == 429) then
-			self.host = HOSTS[1]
-			return self.host
+		for _, host in ipairs(HOSTS) do
+			local ok, res = pcall(req, { Url = host .. "/public/connectivity", Method = "GET" })
+			if ok and type(res) == "table" and (res.StatusCode == 200 or res.StatusCode == 429) then
+				self.host = host
+				return self.host
+			end
 		end
 	end
-	self.host = HOSTS[2]
+	self.host = HOSTS[1]
 	return self.host
 end
 
