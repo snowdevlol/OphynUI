@@ -684,7 +684,7 @@ function UI.new(options)
 	local HAS_SHOP = SHOP_LINK ~= ""
 
 	-- KeySystem = { Key = {"1234", "5678"} or function(key) -> valid, reason, URL = "...", SaveKey = false,
-	--               API = { { Type = "platoboost", ServiceId = 1234, Secret = "..." } } }
+	--               API = { { Type = "platoboost" | "jnkie", ... } } }
 	local KEY_CFG = cfg.KeySystem or {}
 	local KEY_LIST = KEY_CFG.Key
 
@@ -692,6 +692,20 @@ function UI.new(options)
 	local SERVICE_BUILDERS = {
 		platoboost = function(entry)
 			return Platoboost.new(entry)
+		end,
+		-- { Type = "jnkie", Service = "...", Identifier = "...", Provider = "Mixed" }
+		jnkie = function(entry)
+			local instance = Jnkie.new(entry)
+			return {
+				CheckKey = function(_, key)
+					local result = instance:CheckKey(key)
+					local reason = result and (result.error or result.message)
+					return result ~= nil and result.valid == true, reason
+				end,
+				GetKeyLink = function()
+					return instance:GetKeyLink()
+				end,
+			}
 		end,
 	}
 
