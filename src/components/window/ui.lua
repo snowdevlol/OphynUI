@@ -9,6 +9,7 @@ local Notification = import("components/window/notification")
 local Variables = import("variables")
 local Jnkie = import("utilities/jnkie")
 local Platoboost = import("utilities/platoboost")
+local Panda = import("utilities/panda")
 
 local FONT = Font.new(Images.FONT, Enum.FontWeight.Regular, Enum.FontStyle.Normal)
 local FONT_BOLD = Font.new(Images.FONT, Enum.FontWeight.Bold, Enum.FontStyle.Normal)
@@ -684,7 +685,7 @@ function UI.new(options)
 	local HAS_SHOP = SHOP_LINK ~= ""
 
 	-- KeySystem = { Key = {"1234", "5678"} or function(key) -> valid, reason, URL = "...", SaveKey = false,
-	--               API = { { Type = "platoboost" | "jnkie", ... } } }
+	--               API = { { Type = "platoboost" | "panda" | "jnkie", ... } } }
 	local KEY_CFG = cfg.KeySystem or {}
 	local KEY_LIST = KEY_CFG.Key
 
@@ -692,6 +693,10 @@ function UI.new(options)
 	local SERVICE_BUILDERS = {
 		platoboost = function(entry)
 			return Platoboost.new(entry)
+		end,
+		-- { Type = "panda", ServiceId = "..." }
+		panda = function(entry)
+			return Panda.new(entry)
 		end,
 		-- { Type = "jnkie", Service = "...", Identifier = "...", Provider = "Mixed" }
 		jnkie = function(entry)
@@ -708,6 +713,8 @@ function UI.new(options)
 			}
 		end,
 	}
+
+	SERVICE_BUILDERS.pandaauth = SERVICE_BUILDERS.panda -- alias
 
 	local apiEntries = type(KEY_CFG.API) == "table" and KEY_CFG.API or {}
 	if apiEntries.Type ~= nil or apiEntries.type ~= nil then
