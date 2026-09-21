@@ -7,3 +7,7 @@ Violet = "https://raw.githubusercontent.com/snowdevlol/OphynUI/refs/heads/main/b
 White = "https://raw.githubusercontent.com/snowdevlol/OphynUI/refs/heads/main/banners/1789944360331.png"
 Dark = "https://raw.githubusercontent.com/snowdevlol/OphynUI/refs/heads/main/banners/1789944379640.png"
 Plant-Dark = "https://raw.githubusercontent.com/snowdevlol/OphynUI/refs/heads/main/banners/1789944391111.png"
+
+others
+
+Window Banner = "https://raw.githubusercontent.com/snowdevlol/OphynUI/refs/heads/main/banners/37%20Sem%20T%C3%ADtulo_20260921011355.png"
