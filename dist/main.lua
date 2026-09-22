@@ -1,3 +1,413 @@
+local __modules = {}
+local __cache = {}
+
+local function import(path)
+	local cached = __cache[path]
+	if cached ~= nil then
+		return cached
+	end
+	local loader = __modules[path]
+	if not loader then
+		error("module not found: " .. tostring(path))
+	end
+	local value = loader()
+	__cache[path] = value
+	return value
+end
+
+__modules["components/nothing.com/yeahnothing"] = function()
+
+end
+
+__modules["components/window/dialog"] = function()
+local Dialog = {}
+
+function Dialog.new(ctx, callbacks)
+	callbacks = callbacks or {}
+
+	local C = ctx.C
+	local make, frame, text, round = ctx.make, ctx.frame, ctx.text, ctx.round
+	local tween, prep, fade = ctx.tween, ctx.prep, ctx.fade
+	local state, Images, FONT_BOLD = ctx.state, ctx.images, ctx.FONT_BOLD
+
+	local popup = make("Frame", {
+		Size = UDim2.new(1, 0, 1, 0),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ZIndex = 10,
+		Visible = false,
+	}, ctx.canvas)
+
+	local dim = make("TextButton", {
+		Size = UDim2.new(1, 0, 1, 0),
+		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+		BackgroundTransparency = 0.4,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Text = "",
+	}, popup)
+	make("UICorner", { CornerRadius = UDim.new(0, 10) }, dim)
+
+	local popupCard = make("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		Size = UDim2.new(0, 270, 0, 132),
+		BackgroundColor3 = "card",
+		BorderSizePixel = 0,
+	}, popup)
+	round(popupCard, 12, "stroke")
+
+	local badge = frame(popupCard, 22, 20, 32, 32, "input", 0)
+	round(badge, 16, "stroke")
+	make("ImageLabel", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		Size = UDim2.new(0, 12, 0, 12),
+		BackgroundTransparency = 1,
+		Image = Images.CLOSE_ICON,
+		ImageColor3 = ctx.tintIcons and "accent" or Color3.fromRGB(255, 255, 255),
+	}, badge)
+
+	local popupTitle = text(popupCard, "Close Key System?", 66, 19, 182, 16, 14, "text")
+	popupTitle.FontFace = FONT_BOLD
+	local popupDesc = text(popupCard, "Are you sure you want to close the Key System?", 66, 38, 182, 30, 12, "muted")
+	popupDesc.TextWrapped = true
+	popupDesc.TextYAlignment = Enum.TextYAlignment.Top
+
+	local function popupButton(label, x, primary)
+		local btn = make("TextButton", {
+			Position = UDim2.new(0, x, 0, 86),
+			Size = UDim2.new(0, 109, 0, 32),
+			BackgroundColor3 = primary and "submitBg" or "btn2",
+			BackgroundTransparency = primary and 0.12 or 0,
+			BorderSizePixel = 0,
+			AutoButtonColor = false,
+			Text = label,
+			TextSize = 13,
+			TextColor3 = primary and "submitText" or "text",
+			FontFace = ctx.FONT,
+		}, popupCard)
+		if primary then
+			round(btn, 8)
+		else
+			round(btn, 8, "stroke")
+		end
+		return btn
+	end
+
+	local cancelBtn = popupButton("Cancel", 22, false)
+	local confirmBtn = popupButton("Close", 139, true)
+
+	cancelBtn.MouseEnter:Connect(function()
+		if state.closing or not state.popupOpen then
+			return
+		end
+		tween(cancelBtn, 0.15, { BackgroundColor3 = C.btn2Hover })
+	end)
+	cancelBtn.MouseLeave:Connect(function()
+		if state.closing or not state.popupOpen then
+			return
+		end
+		tween(cancelBtn, 0.15, { BackgroundColor3 = C.btn2 })
+	end)
+	confirmBtn.MouseEnter:Connect(function()
+		if state.closing or not state.popupOpen then
+			return
+		end
+		tween(confirmBtn, 0.15, { BackgroundTransparency = 0 })
+	end)
+	confirmBtn.MouseLeave:Connect(function()
+		if state.closing or not state.popupOpen then
+			return
+		end
+		tween(confirmBtn, 0.15, { BackgroundTransparency = 0.12 })
+	end)
+
+	local popupItems = prep(popup)
+	fade(popupItems, 0)
+
+	local function show()
+		if not state.ready or state.popupOpen or state.closing then
+			return
+		end
+		state.popupOpen = true
+		popup.Visible = true
+		popupCard.Position = UDim2.new(0.5, 0, 0.5, 8)
+		if callbacks.onOpen then
+			callbacks.onOpen()
+		end
+		fade(popupItems, 1, 0.22)
+		tween(popupCard, 0.35, { Position = UDim2.new(0.5, 0, 0.5, 0) }, Enum.EasingStyle.Quint)
+	end
+
+	local function hide()
+		if not state.popupOpen or state.closing then
+			return
+		end
+		state.popupOpen = false
+		fade(popupItems, 0, 0.18)
+		task.delay(0.2, function()
+			if not state.popupOpen then
+				popup.Visible = false
+			end
+		end)
+	end
+
+	cancelBtn.MouseButton1Click:Connect(hide)
+	confirmBtn.MouseButton1Click:Connect(function()
+		if callbacks.onConfirm then
+			callbacks.onConfirm()
+		end
+	end)
+
+	return {
+		popup = popup,
+		items = popupItems,
+		show = show,
+		hide = hide,
+	}
+end
+
+return Dialog
+end
+
+__modules["components/window/notification"] = function()
+local Lighting = game:GetService("Lighting")
+
+local Notification = {}
+
+function Notification.new(ctx)
+	local C = ctx.C
+	local make, frame, text, round = ctx.make, ctx.frame, ctx.text, ctx.round
+	local tween, prep, fade = ctx.tween, ctx.prep, ctx.fade
+	local root, cfg, Images = ctx.root, ctx.cfg, ctx.images
+	local FONT_BOLD = ctx.FONT_BOLD
+
+	local NOTIF_W, NOTIF_H = cfg.NOTIF_W, cfg.NOTIF_H
+	local NOTIF_TRANSPARENCY = cfg.NOTIF_TRANSPARENCY
+	local NOTIF_COLOR = cfg.NOTIF_COLOR
+	local NOTIF_BLUR = cfg.NOTIF_BLUR
+
+	local MAX_NOTIFS = 4
+
+	local ICONS = {
+		key = { Images.KEY, 18 },
+		submit = { Images.SUBMIT, 18 },
+		link = { Images.LINK, 18 },
+		discord = { Images.DISCORD, 18 },
+		close = { Images.CLOSE_ICON, 14 },
+		moon = { Images.MOON_ICON, 14 },
+	}
+
+	local function kindColor(kind)
+		if kind == "success" then
+			return C.success
+		elseif kind == "warn" then
+			return C.warn
+		elseif kind == "error" then
+			return C.error
+		end
+		return C.accent
+	end
+
+	local notifHolder = make("Frame", {
+		AnchorPoint = Vector2.new(1, 1),
+		Position = UDim2.new(1, -16, 1, -8),
+		Size = UDim2.new(0, NOTIF_W, 1, -16),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ZIndex = 20,
+	}, root)
+	make("UIListLayout", {
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		VerticalAlignment = Enum.VerticalAlignment.Bottom,
+		HorizontalAlignment = Enum.HorizontalAlignment.Right,
+	}, notifHolder)
+
+	local notifCount = 0
+	local activeNotifs = {}
+
+	local Blur = { effect = nil, users = 0 }
+
+	function Blur.to(size, time)
+		if NOTIF_BLUR <= 0 then
+			return
+		end
+		if not Blur.effect then
+			local ok, effect = pcall(function()
+				local e = Instance.new("BlurEffect")
+				e.Name = "AirflowBlur"
+				e.Size = 0
+				e.Parent = Lighting
+				return e
+			end)
+			if not ok then
+				return
+			end
+			Blur.effect = effect
+		end
+		tween(Blur.effect, time, { Size = size })
+	end
+
+	function Blur.acquire()
+		Blur.users += 1
+		Blur.to(NOTIF_BLUR, 0.35)
+	end
+
+	function Blur.release()
+		Blur.users = math.max(Blur.users - 1, 0)
+		if Blur.users == 0 and Blur.effect then
+			Blur.to(0, 0.5)
+		end
+	end
+
+	root.Destroying:Connect(function()
+		if Blur.effect then
+			Blur.effect:Destroy()
+			Blur.effect = nil
+		end
+	end)
+
+	local function notify(title, message, kind, iconKey, duration)
+		kind = kind or "info"
+		duration = duration or 3.5
+		local color = kindColor(kind)
+		local spec = ICONS[iconKey] or (kind == "error" and ICONS.close or ICONS.key)
+
+		notifCount += 1
+		Blur.acquire()
+
+		local wrapper = make("Frame", {
+			LayoutOrder = notifCount,
+			Size = UDim2.new(0, NOTIF_W, 0, NOTIF_H + 8),
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+		}, notifHolder)
+
+		local toast = make("TextButton", {
+			Position = UDim2.new(0, 40, 0, 0),
+			Size = UDim2.new(0, NOTIF_W, 0, NOTIF_H),
+			BackgroundColor3 = C[NOTIF_COLOR],
+			BackgroundTransparency = NOTIF_TRANSPARENCY,
+			BorderSizePixel = 0,
+			AutoButtonColor = false,
+			ClipsDescendants = true,
+			Text = "",
+		}, wrapper)
+		round(toast, 10, C.stroke)
+		toast.UIStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		toast.UIStroke.Transparency = 0.35
+
+		local badge = frame(toast, 16, (NOTIF_H - 36) / 2, 36, 36, color, 0.86)
+		round(badge, 18, color)
+		badge.UIStroke.Transparency = 0.6
+
+		local badgeIcon = make("ImageLabel", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.new(0.5, 0, 0.5, 0),
+			Size = UDim2.new(0, spec[2], 0, spec[2]),
+			BackgroundTransparency = 1,
+			Image = spec[1],
+			ImageColor3 = ctx.tintIcons and color or Color3.fromRGB(255, 255, 255),
+		}, badge)
+		local iconScale = make("UIScale", { Scale = 0.5 }, badgeIcon)
+
+		local titleLabel = text(toast, title, 64, 15, NOTIF_W - 78, 18, 13, C.text)
+		titleLabel.FontFace = FONT_BOLD
+		titleLabel.TextTruncate = Enum.TextTruncate.AtEnd
+		local msgLabel = text(toast, message, 64, 35, NOTIF_W - 78, 18, 12, C.muted)
+		msgLabel.TextTruncate = Enum.TextTruncate.AtEnd
+
+		local items = prep(toast)
+		fade(items, 0)
+
+		local handle = {}
+		local dismissed = false
+		function handle.dismiss()
+			if dismissed then
+				return
+			end
+			dismissed = true
+			Blur.release()
+			local idx = table.find(activeNotifs, handle)
+			if idx then
+				table.remove(activeNotifs, idx)
+			end
+			fade(items, 0, 0.25)
+			tween(toast, 0.3, { Position = UDim2.new(0, 40, 0, 0) }, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
+			task.delay(0.28, function()
+				tween(wrapper, 0.2, { Size = UDim2.new(0, NOTIF_W, 0, 0) })
+				task.delay(0.22, function()
+					wrapper:Destroy()
+				end)
+			end)
+		end
+
+		toast.MouseButton1Click:Connect(handle.dismiss)
+
+		fade(items, 1, 0.3)
+		tween(toast, 0.45, { Position = UDim2.new(0, 0, 0, 0) }, Enum.EasingStyle.Quint)
+		tween(iconScale, 0.55, { Scale = 1 }, Enum.EasingStyle.Back)
+
+		local hovering, hoverSince = false, 0
+		toast.MouseEnter:Connect(function()
+			if dismissed then
+				return
+			end
+			hovering = true
+			hoverSince = os.clock()
+			tween(toast, 0.15, { BackgroundColor3 = NOTIF_COLOR == "bg" and C.card or C.btn2 })
+		end)
+		toast.MouseLeave:Connect(function()
+			if dismissed then
+				return
+			end
+			hovering = false
+			tween(toast, 0.15, { BackgroundColor3 = C[NOTIF_COLOR] })
+		end)
+
+		task.spawn(function()
+			local remaining = duration
+			local last = os.clock()
+			while not dismissed do
+				task.wait(0.05)
+				local now = os.clock()
+				if not (hovering and now - hoverSince < 8) then
+					remaining -= now - last
+				end
+				last = now
+				if remaining <= 0 then
+					handle.dismiss()
+					break
+				end
+			end
+		end)
+
+		table.insert(activeNotifs, handle)
+		while #activeNotifs > MAX_NOTIFS do
+			activeNotifs[1].dismiss()
+		end
+
+		return handle
+	end
+
+	local function dismissAll()
+		for i = #activeNotifs, 1, -1 do
+			activeNotifs[i].dismiss()
+		end
+	end
+
+	return {
+		notify = notify,
+		dismissAll = dismissAll,
+		blur = Blur,
+	}
+end
+
+return Notification
+end
+
+__modules["components/window/ui"] = function()
 local TweenService = game:GetService("TweenService")
 local Players = game:GetService("Players")
 local HttpService = game:GetService("HttpService")
@@ -1160,6 +1570,25 @@ function UI.new(options)
 	local getKeyCheckBar1, getKeyCheckLen1 = checkBar(Vector2.new(-5, 0.5), Vector2.new(-1.5, 4))
 	local getKeyCheckBar2, getKeyCheckLen2 = checkBar(Vector2.new(-1.5, 4), Vector2.new(5.5, -4.5))
 
+	-- X shown briefly when a key link couldn't be fetched or copied
+	local getKeyErrorHolder = centered(getKey, 16, 16)
+	getKeyErrorHolder.Visible = false
+	local function errorBar(a, b)
+		local d = b - a
+		local bar = make("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.new(0.5, a.X, 0.5, a.Y),
+			Size = UDim2.new(0, 0, 0, 2),
+			Rotation = math.deg(math.atan2(d.Y, d.X)),
+			BackgroundColor3 = "warn",
+			BorderSizePixel = 0,
+		}, getKeyErrorHolder)
+		make("UICorner", { CornerRadius = UDim.new(1, 0) }, bar)
+		return bar, d.Magnitude
+	end
+	local getKeyErrorBar1, getKeyErrorLen1 = errorBar(Vector2.new(-4.5, -4.5), Vector2.new(4.5, 4.5))
+	local getKeyErrorBar2, getKeyErrorLen2 = errorBar(Vector2.new(-4.5, 4.5), Vector2.new(4.5, -4.5))
+
 	local getKeyBusy = false
 
 	-- Hides the icon + label and spins up the loading ring
@@ -1196,6 +1625,25 @@ function UI.new(options)
 				return
 			end
 			getKeyCheckHolder.Visible = false
+			getKeyBusy = false
+			fade(getKeyContentItems, 1, 0.15)
+		end)
+	end
+
+	-- Morphs the spinner into an X, then fades back to the icon + label
+	local function getKeyShowError()
+		getKeySpin:Cancel()
+		getKeySpinnerHolder.Visible = false
+		getKeyErrorBar1.Size = UDim2.new(0, 0, 0, 2)
+		getKeyErrorBar2.Size = UDim2.new(0, 0, 0, 2)
+		getKeyErrorHolder.Visible = true
+		tween(getKeyErrorBar1, 0.14, { Size = UDim2.new(0, getKeyErrorLen1, 0, 2) })
+		tween(getKeyErrorBar2, 0.14, { Size = UDim2.new(0, getKeyErrorLen2, 0, 2) })
+		task.delay(1.1, function()
+			if not state.ready or state.closing then
+				return
+			end
+			getKeyErrorHolder.Visible = false
 			getKeyBusy = false
 			fade(getKeyContentItems, 1, 0.15)
 		end)
@@ -1611,20 +2059,22 @@ function UI.new(options)
 				return
 			end
 
-			if link and copyLink(link, "Key link", "link") then
-				getKeyShowCheck()
+			if link then
+				if copyLink(link, "Key link", "link") then
+					getKeyShowCheck()
+				else
+					getKeyShowError()
+				end
 				return
 			end
 
-			getKeySetLoading(false)
-			if not link then
-				if err == "RATE_LIMITED" then
-					notify("Slow down", "Wait 5 minutes before requesting another link.", "warn", "link", 5)
-				elseif err then
-					notify("Couldn't get a link", tostring(err), "warn", "link", 5)
-				else
-					notify("No link set", "The key link isn't set.", "warn", "link")
-				end
+			getKeyShowError()
+			if err == "RATE_LIMITED" then
+				notify("Slow down", "Wait 5 minutes before requesting another link.", "warn", "link", 5)
+			elseif err then
+				notify("Couldn't get a link", tostring(err), "warn", "link", 5)
+			else
+				notify("No link set", "The key link isn't set.", "warn", "link")
 			end
 		end)
 	end)
@@ -2169,3 +2619,677 @@ function UI.new(options)
 end
 
 return UI
+end
+
+__modules["images/images"] = function()
+-- src/images/images.lua
+-- All Roblox asset IDs (images, icons, and font) used by the UI.
+
+local Images = {
+	FONT = "rbxassetid://12187365364",
+	KEY = "rbxassetid://96510194465420",
+	SUBMIT = "rbxassetid://113692007244654",
+	LINK = "rbxassetid://114238209622913",
+	DISCORD = "rbxassetid://127255077587058",
+	GLOW = "rbxassetid://8992230677",
+	LOGO = "rbxassetid://111673746737789",
+	CLOSE_ICON = "rbxassetid://110786993356448",
+	MOON_ICON = "rbxassetid://83380517901735",
+	SHADOW = "rbxassetid://6014261993",
+	GAME_PLACEHOLDER = "rbxassetid://74584987850498",
+}
+
+return Images
+end
+
+__modules["utilities/jnkie"] = function()
+local SDK_URL = "https://jnkie.com/sdk/library.lua"
+
+local Jnkie = {}
+Jnkie.__index = Jnkie
+
+local function safeLoad(url)
+	if not loadstring then
+		return nil, "loadstring is not available"
+	end
+	local ok, result = pcall(function()
+		return game:HttpGet(url)
+	end)
+	if not ok then
+		return nil, tostring(result)
+	end
+	local fn, compileErr = loadstring(result)
+	if not fn then
+		return nil, tostring(compileErr)
+	end
+	local okRun, lib = pcall(fn)
+	if not okRun then
+		return nil, tostring(lib)
+	end
+	return lib
+end
+
+function Jnkie.new(config)
+	config = config or {}
+	local self = setmetatable({}, Jnkie)
+	self.__isJnkieInstance = true
+	self.service = config.Service or config.service
+	self.identifier = config.Identifier or config.identifier
+	self.provider = config.Provider or config.provider or "Mixed"
+	self.client = nil
+	self.loadError = nil
+
+	if not self.service or self.service == "" then
+		warn("[Jnkie] Service is missing — check your dashboard for the exact name")
+	end
+	if not self.identifier or self.identifier == "" then
+		warn("[Jnkie] Identifier is missing — check your dashboard for your user ID")
+	end
+
+	return self
+end
+
+function Jnkie:_client()
+	if self.client then
+		return self.client
+	end
+	local lib, err = safeLoad(SDK_URL)
+	if not lib then
+		self.loadError = err
+		warn("[Jnkie] failed to load SDK: " .. tostring(err))
+		return nil
+	end
+	lib.service = self.service
+	lib.identifier = self.identifier
+	lib.provider = self.provider
+	self.client = lib
+	return lib
+end
+
+local function isSuccess(result)
+	if type(result) ~= "table" then
+		return false
+	end
+	if result.valid == true or result.success == true then
+		return true
+	end
+	if result.message == "KEY_VALID" or result.message == "KEYLESS" then
+		return true
+	end
+	return false
+end
+
+function Jnkie:CheckKey(key)
+	local lib = self:_client()
+	if not lib then
+		return { valid = false, error = self.loadError or "SDK_LOAD_FAILED" }
+	end
+	local ok, result = pcall(lib.check_key, key)
+	if not ok then
+		return { valid = false, error = tostring(result) }
+	end
+	if type(result) ~= "table" then
+		return { valid = false, error = "UNEXPECTED_RESPONSE: " .. tostring(result) }
+	end
+	result.valid = isSuccess(result)
+	return result
+end
+
+function Jnkie:GetKeyLink()
+	local lib = self:_client()
+	if not lib then
+		return nil, self.loadError or "SDK_LOAD_FAILED"
+	end
+	local ok, link, err = pcall(lib.get_key_link)
+	if not ok then
+		return nil, tostring(link)
+	end
+	return link, err
+end
+
+function Jnkie:Validator()
+	local instance = self
+	local adapter = setmetatable({
+		__isJnkie = true,
+		__instance = instance,
+	}, {
+		__call = function(_, key)
+			local result = instance:CheckKey(key)
+			local reason = result and (result.error or result.message)
+			return result and result.valid == true, reason
+		end,
+	})
+	return adapter
+end
+
+return Jnkie
+end
+
+__modules["utilities/panda"] = function()
+-- PandaAuth (Panda Development) adapter for Ophyn.
+--
+--   KeySystem = {
+--       API = {
+--           { Type = "panda", ServiceId = "YOUR_SERVICE_ID" },
+--       },
+--   }
+--
+-- Uses Panda's official Roblox SDK (PUSL-V4), downloaded from Panda's server
+-- the first time it is needed. Docs: https://pandauth.com/docs/for-developers/pusl-v4
+
+local LIB_URL = "https://secure.pandauth.com/pv4/lib"
+
+-- Reasons returned by PUSL.validateEx, turned into messages for the UI
+local REASONS = {
+	INVALID_KEY = "key is invalid or expired.",
+	RATE_LIMITED = "you are being rate limited, please wait a moment and try again.",
+	NETWORK = "network error, please try again.",
+	NO_SERVICE = "Panda ServiceId is missing or invalid.",
+	NO_KEY = "key is empty.",
+	NO_HTTP = "your executor doesn't support HTTP requests.",
+	IDENTITY = "couldn't verify the Panda server identity, please try again later.",
+	PROTOCOL = "Panda protocol error, please try again later.",
+}
+
+local Panda = {}
+Panda.__index = Panda
+
+function Panda.new(config)
+	config = config or {}
+	local self = setmetatable({}, Panda)
+
+	local serviceId = config.ServiceId or config.Service or config.serviceId
+	self.serviceId = serviceId ~= nil and tostring(serviceId) or ""
+	self.debug = config.Debug == true
+
+	self.lib = nil
+	self.loading = false
+
+	if self.serviceId == "" then
+		warn("[Panda] ServiceId is missing — check your Panda dashboard")
+	end
+
+	return self
+end
+
+-- Downloads and configures the Panda SDK once. Returns the library, or nil + reason.
+function Panda:_load()
+	while self.loading do
+		task.wait(0.1)
+	end
+	if self.lib then
+		return self.lib
+	end
+	if self.serviceId == "" then
+		return nil, REASONS.NO_SERVICE
+	end
+
+	self.loading = true
+	local lib, err
+
+	local okFetch, src = pcall(function()
+		return game:HttpGet(LIB_URL)
+	end)
+	if not okFetch or type(src) ~= "string" or src == "" then
+		err = "couldn't download the Panda library."
+	elseif not loadstring then
+		err = "loadstring is not available."
+	else
+		local fn, compileError = loadstring(src)
+		if not fn then
+			err = "couldn't load the Panda library: " .. tostring(compileError)
+		else
+			local okRun, result = pcall(fn)
+			if okRun and type(result) == "table" and type(result.configure) == "function" then
+				local okConfig, configError = pcall(result.configure, {
+					serviceId = self.serviceId,
+					debug = self.debug,
+					kickOnDetect = false,
+				})
+				if okConfig then
+					lib = result
+				else
+					err = "couldn't configure the Panda library: " .. tostring(configError)
+				end
+			else
+				err = "Panda library failed to initialize."
+			end
+		end
+	end
+
+	self.loading = false
+	if lib then
+		self.lib = lib
+		return lib
+	end
+	return nil, err
+end
+
+-- Returns valid (boolean), reason (string when invalid)
+function Panda:CheckKey(key)
+	key = tostring(key or ""):match("^%s*(.-)%s*$")
+	if key == "" then
+		return false, REASONS.NO_KEY
+	end
+
+	local lib, err = self:_load()
+	if not lib then
+		return false, err
+	end
+
+	if type(lib.validateEx) == "function" then
+		local ok, valid, reason = pcall(lib.validateEx, key)
+		if not ok then
+			return false, tostring(valid)
+		end
+		if valid == true then
+			return true
+		end
+		return false, REASONS[reason] or ("Panda error: " .. tostring(reason))
+	end
+
+	-- older versions of the SDK only have validate()
+	local ok, result = pcall(lib.validate, key)
+	if not ok then
+		return false, tostring(result)
+	end
+	if type(result) == "table" and result.success == true then
+		return true
+	end
+	local reason = type(result) == "table" and (result.reason or result.error) or nil
+	return false, REASONS[reason] or tostring(reason or "key is invalid.")
+end
+
+-- Returns link, or nil + reason
+function Panda:GetKeyLink()
+	local lib, err = self:_load()
+	if not lib then
+		return nil, err
+	end
+	if type(lib.getKeyUrl) ~= "function" then
+		return nil, "Panda library has no getKeyUrl."
+	end
+	local ok, url = pcall(lib.getKeyUrl)
+	if ok and type(url) == "string" and url ~= "" then
+		return url
+	end
+	return nil, "Failed to get link."
+end
+
+return Panda
+end
+
+__modules["utilities/platoboost"] = function()
+-- Platoboost adapter for Ophyn.
+--
+--   KeySystem = {
+--       API = {
+--           {
+--               Type = "platoboost",
+--               ServiceId = 1234,               -- your Platoboost service id
+--               Secret = "platoboost-secret",   -- your Platoboost secret
+--           },
+--       },
+--   }
+--
+-- Based on Platoboost's official Lua library. The SHA-256 below is copied
+-- from it unchanged; the requests use HttpService for JSON.
+
+local HttpService = game:GetService("HttpService")
+local Players = game:GetService("Players")
+
+-- SHA-256 (hex digest) from the official Platoboost library.
+local sha256 = (function()
+local a=2^32;local b=a-1;local function c(d,e)local f,g=0,1;while d~=0 or e~=0 do local h,i=d%2,e%2;local j=(h+i)%2;f=f+j*g;d=math.floor(d/2)e=math.floor(e/2)g=g*2 end;return f%a end;local function k(d,e,l,...)local m;if e then d=d%a;e=e%a;m=c(d,e)if l then m=k(m,l,...)end;return m elseif d then return d%a else return 0 end end;local function n(d,e,l,...)local m;if e then d=d%a;e=e%a;m=(d+e-c(d,e))/2;if l then m=n(m,l,...)end;return m elseif d then return d%a else return b end end;local function o(p)return b-p end;local function q(d,r)if r<0 then return lshift(d,-r)end;return math.floor(d%2^32/2^r)end;local function s(p,r)if r>31 or r<-31 then return 0 end;return q(p%a,r)end;local function lshift(d,r)if r<0 then return s(d,-r)end;return d*2^r%2^32 end;local function t(p,r)p=p%a;r=r%32;local u=n(p,2^r-1)return s(p,r)+lshift(u,32-r)end;local v={0x428a2f98,0x71374491,0xb5c0fbcf,0xe9b5dba5,0x3956c25b,0x59f111f1,0x923f82a4,0xab1c5ed5,0xd807aa98,0x12835b01,0x243185be,0x550c7dc3,0x72be5d74,0x80deb1fe,0x9bdc06a7,0xc19bf174,0xe49b69c1,0xefbe4786,0x0fc19dc6,0x240ca1cc,0x2de92c6f,0x4a7484aa,0x5cb0a9dc,0x76f988da,0x983e5152,0xa831c66d,0xb00327c8,0xbf597fc7,0xc6e00bf3,0xd5a79147,0x06ca6351,0x14292967,0x27b70a85,0x2e1b2138,0x4d2c6dfc,0x53380d13,0x650a7354,0x766a0abb,0x81c2c92e,0x92722c85,0xa2bfe8a1,0xa81a664b,0xc24b8b70,0xc76c51a3,0xd192e819,0xd6990624,0xf40e3585,0x106aa070,0x19a4c116,0x1e376c08,0x2748774c,0x34b0bcb5,0x391c0cb3,0x4ed8aa4a,0x5b9cca4f,0x682e6ff3,0x748f82ee,0x78a5636f,0x84c87814,0x8cc70208,0x90befffa,0xa4506ceb,0xbef9a3f7,0xc67178f2}local function w(x)return string.gsub(x,".",function(l)return string.format("%02x",string.byte(l))end)end;local function y(z,A)local x=""for B=1,A do local C=z%256;x=string.char(C)..x;z=(z-C)/256 end;return x end;local function D(x,B)local A=0;for B=B,B+3 do A=A*256+string.byte(x,B)end;return A end;local function E(F,G)local H=64-(G+9)%64;G=y(8*G,8)F=F.."\128"..string.rep("\0",H)..G;assert(#F%64==0)return F end;local function I(J)J[1]=0x6a09e667;J[2]=0xbb67ae85;J[3]=0x3c6ef372;J[4]=0xa54ff53a;J[5]=0x510e527f;J[6]=0x9b05688c;J[7]=0x1f83d9ab;J[8]=0x5be0cd19;return J end;local function K(F,B,J)local L={}for M=1,16 do L[M]=D(F,B+(M-1)*4)end;for M=17,64 do local N=L[M-15]local O=k(t(N,7),t(N,18),s(N,3))N=L[M-2]L[M]=(L[M-16]+O+L[M-7]+k(t(N,17),t(N,19),s(N,10)))%a end;local d,e,l,P,Q,R,S,T=J[1],J[2],J[3],J[4],J[5],J[6],J[7],J[8]for B=1,64 do local O=k(t(d,2),t(d,13),t(d,22))local U=k(n(d,e),n(d,l),n(e,l))local V=(O+U)%a;local W=k(t(Q,6),t(Q,11),t(Q,25))local X=k(n(Q,R),n(o(Q),S))local Y=(T+W+X+v[B]+L[B])%a;T=S;S=R;R=Q;Q=(P+Y)%a;P=l;l=e;e=d;d=(Y+V)%a end;J[1]=(J[1]+d)%a;J[2]=(J[2]+e)%a;J[3]=(J[3]+l)%a;J[4]=(J[4]+P)%a;J[5]=(J[5]+Q)%a;J[6]=(J[6]+R)%a;J[7]=(J[7]+S)%a;J[8]=(J[8]+T)%a end;local function Z(F)F=E(F,#F)local J=I({})for B=1,#F,64 do K(F,B,J)end;return w(y(J[1],4)..y(J[2],4)..y(J[3],4)..y(J[4],4)..y(J[5],4)..y(J[6],4)..y(J[7],4)..y(J[8],4))end;
+	return Z
+end)()
+
+local Platoboost = {}
+Platoboost.__index = Platoboost
+
+-- Tried in this order; the first one that answers is used.
+local HOSTS = { "https://api.platoboost.app", "https://api.platoboost.com", "https://api.platoboost.net" }
+local LINK_CACHE_TIME = 10 * 60
+local RATE_LIMIT_MESSAGE = "you are being rate limited, please wait 20 seconds and try again."
+local BAD_STATUS_MESSAGE = "server returned an invalid status code, please try again later."
+local JSON_HEADERS = { ["Content-Type"] = "application/json" }
+
+local rng = Random.new()
+
+local function getRequestFunction()
+	return request or http_request or (syn and syn.request) or (http and http.request)
+end
+
+local function getHwid()
+	if gethwid then
+		local ok, hwid = pcall(gethwid)
+		if ok and hwid ~= nil and tostring(hwid) ~= "" then
+			return tostring(hwid)
+		end
+	end
+	local lp = Players.LocalPlayer
+	return tostring(lp and lp.UserId or 0)
+end
+
+local function generateNonce()
+	local chars = table.create(16)
+	for i = 1, 16 do
+		chars[i] = string.char(rng:NextInteger(97, 122))
+	end
+	return table.concat(chars)
+end
+
+local function decode(body)
+	local ok, result = pcall(HttpService.JSONDecode, HttpService, body)
+	if ok and type(result) == "table" then
+		return result
+	end
+	return nil
+end
+
+function Platoboost.new(config)
+	config = config or {}
+	local self = setmetatable({}, Platoboost)
+	self.__isPlatoboostInstance = true
+
+	local service = config.ServiceId or config.Service or config.service
+	self.service = tonumber(service) or service
+	self.secret = config.Secret or config.secret
+
+	local useNonce = config.UseNonce
+	if useNonce == nil then
+		useNonce = config.useNonce
+	end
+	self.useNonce = useNonce ~= false
+
+	-- Optional: force one API host, e.g. Host = "https://api.platoboost.app"
+	local host = config.Host or config.host
+	if type(host) == "string" and host ~= "" then
+		host = host:gsub("/+$", "")
+		if not host:match("^https?://") then
+			host = "https://" .. host
+		end
+		self.host = host
+	end
+	self.identifier = nil
+	self.requestSending = false
+	self.cachedLink = nil
+	self.cachedTime = 0
+
+	if self.service == nil or self.service == "" then
+		warn("[Platoboost] ServiceId is missing — check your Platoboost dashboard")
+	end
+	if self.useNonce and (type(self.secret) ~= "string" or self.secret == "") then
+		warn("[Platoboost] Secret is missing — keys can't be verified without it")
+	end
+
+	return self
+end
+
+-- Picks the first host that answers /public/connectivity (200 or 429).
+-- If none answers, the first one in HOSTS is used.
+function Platoboost:_host()
+	if self.host then
+		return self.host
+	end
+	local req = getRequestFunction()
+	if req then
+		for _, host in ipairs(HOSTS) do
+			local ok, res = pcall(req, { Url = host .. "/public/connectivity", Method = "GET" })
+			if ok and type(res) == "table" and (res.StatusCode == 200 or res.StatusCode == 429) then
+				self.host = host
+				return self.host
+			end
+		end
+	end
+	self.host = HOSTS[1]
+	return self.host
+end
+
+function Platoboost:_identifier()
+	if not self.identifier then
+		self.identifier = sha256(getHwid())
+	end
+	return self.identifier
+end
+
+function Platoboost:_send(options)
+	local req = getRequestFunction()
+	if not req then
+		return nil, "your executor doesn't support HTTP requests."
+	end
+	local ok, res = pcall(req, options)
+	if not ok then
+		return nil, tostring(res)
+	end
+	if type(res) ~= "table" then
+		return nil, "invalid response from server."
+	end
+	return res
+end
+
+-- Returns link, or nil + reason
+function Platoboost:GetKeyLink()
+	if self.cachedLink and self.cachedTime + LINK_CACHE_TIME > os.time() then
+		return self.cachedLink
+	end
+	if self.service == nil or self.service == "" then
+		return nil, "Platoboost ServiceId is missing."
+	end
+
+	local res, err = self:_send({
+		Url = self:_host() .. "/public/start",
+		Method = "POST",
+		Body = HttpService:JSONEncode({
+			service = self.service,
+			identifier = self:_identifier(),
+		}),
+		Headers = JSON_HEADERS,
+	})
+	if not res then
+		return nil, err
+	end
+
+	if res.StatusCode == 200 then
+		local decoded = decode(res.Body)
+		if decoded then
+			if decoded.success == true and type(decoded.data) == "table" and decoded.data.url then
+				self.cachedLink = decoded.data.url
+				self.cachedTime = os.time()
+				return self.cachedLink
+			end
+			return nil, tostring(decoded.message or "Failed to get link.")
+		end
+	elseif res.StatusCode == 429 then
+		return nil, RATE_LIMIT_MESSAGE
+	end
+	return nil, "Failed to get link."
+end
+
+-- With UseNonce the server signs its answer with the secret; check it.
+function Platoboost:_integrityOk(data, nonce)
+	if not self.useNonce then
+		return true
+	end
+	return data.hash == sha256("true" .. "-" .. nonce .. "-" .. tostring(self.secret))
+end
+
+function Platoboost:_redeem(key)
+	local nonce = generateNonce()
+	local body = {
+		identifier = self:_identifier(),
+		key = key,
+	}
+	if self.useNonce then
+		body.nonce = nonce
+	end
+
+	local res, err = self:_send({
+		Url = self:_host() .. "/public/redeem/" .. tostring(self.service),
+		Method = "POST",
+		Body = HttpService:JSONEncode(body),
+		Headers = JSON_HEADERS,
+	})
+	if not res then
+		return false, err
+	end
+	if res.StatusCode == 429 then
+		return false, RATE_LIMIT_MESSAGE
+	end
+	if res.StatusCode ~= 200 then
+		return false, BAD_STATUS_MESSAGE
+	end
+
+	local decoded = decode(res.Body)
+	if not decoded then
+		return false, "invalid response from server."
+	end
+	if decoded.success ~= true then
+		local message = tostring(decoded.message or "request failed.")
+		if message:sub(1, 27) == "unique constraint violation" then
+			return false, "you already have an active key, please wait for it to expire before redeeming it."
+		end
+		return false, message
+	end
+
+	local data = type(decoded.data) == "table" and decoded.data or {}
+	if data.valid ~= true then
+		return false, "key is invalid."
+	end
+	if not self:_integrityOk(data, nonce) then
+		return false, "failed to verify integrity."
+	end
+	return true
+end
+
+function Platoboost:_verify(key)
+	local nonce = generateNonce()
+	local url = self:_host()
+		.. "/public/whitelist/"
+		.. tostring(self.service)
+		.. "?identifier="
+		.. self:_identifier()
+		.. "&key="
+		.. HttpService:UrlEncode(key)
+	if self.useNonce then
+		url = url .. "&nonce=" .. nonce
+	end
+
+	local res, err = self:_send({ Url = url, Method = "GET" })
+	if not res then
+		return false, err
+	end
+	if res.StatusCode == 429 then
+		return false, RATE_LIMIT_MESSAGE
+	end
+	if res.StatusCode ~= 200 then
+		return false, BAD_STATUS_MESSAGE
+	end
+
+	local decoded = decode(res.Body)
+	if not decoded then
+		return false, "invalid response from server."
+	end
+	if decoded.success ~= true then
+		return false, tostring(decoded.message or "request failed.")
+	end
+
+	local data = type(decoded.data) == "table" and decoded.data or {}
+	if data.valid == true then
+		if not self:_integrityOk(data, nonce) then
+			return false, "failed to verify integrity."
+		end
+		return true
+	end
+
+	-- Keys from the Platoboost site start with KEY_ and must be redeemed first
+	if key:sub(1, 4) == "KEY_" then
+		return self:_redeem(key)
+	end
+	return false, "key is invalid."
+end
+
+-- Returns valid (boolean), reason (string when invalid)
+function Platoboost:CheckKey(key)
+	key = tostring(key or ""):match("^%s*(.-)%s*$")
+	if key == "" then
+		return false, "key is empty."
+	end
+	if self.service == nil or self.service == "" then
+		return false, "Platoboost ServiceId is missing."
+	end
+	if self.useNonce and (type(self.secret) ~= "string" or self.secret == "") then
+		return false, "Platoboost Secret is missing."
+	end
+	if self.requestSending then
+		return false, "a request is already being sent, please slow down."
+	end
+
+	self.requestSending = true
+	local ok, valid, reason = pcall(self._verify, self, key)
+	self.requestSending = false
+
+	if not ok then
+		return false, tostring(valid)
+	end
+	return valid == true, reason
+end
+
+function Platoboost:Validator()
+	local instance = self
+	return setmetatable({
+		__isPlatoboost = true,
+		__instance = instance,
+	}, {
+		__call = function(_, key)
+			return instance:CheckKey(key)
+		end,
+	})
+end
+
+return Platoboost
+end
+
+__modules["variables"] = function()
+return {
+	-- Window Config
+	Title = "Ophyn",
+	Description = "Key System",
+	Logo = "rbxassetid://111673746737789", -- rbxassetid
+	Theme = "Plant-Dark",
+	Folder = "Ophyn-KSY",
+
+	-- Buttons Config
+	getkey = true,
+	shopbt = "", 
+
+	-- Intro Config
+	startintro_size = 80, -- initial square size
+	introloading_time = 3,
+	squareintro_time = 1.2,
+
+	-- Themes Config
+	Changelogocolor = true,
+	Changeiconscolor = true,
+
+	-- Section Config
+	discord_link = "",
+	website_link = "",
+
+	-- Script Execution
+	Execute = "",
+	Callback = function(key) -- coloque seu script aqui (também aceita string com o código)
+		-- seu script
+	end,
+}
+end
+
+local KeySystem = {}
+
+function KeySystem.new(options)
+	return import("components/window/ui").new(options)
+end
+
+KeySystem.Jnkie = import("utilities/jnkie")
+
+return KeySystem
