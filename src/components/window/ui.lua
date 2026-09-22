@@ -1160,6 +1160,25 @@ function UI.new(options)
 	local getKeyCheckBar1, getKeyCheckLen1 = checkBar(Vector2.new(-5, 0.5), Vector2.new(-1.5, 4))
 	local getKeyCheckBar2, getKeyCheckLen2 = checkBar(Vector2.new(-1.5, 4), Vector2.new(5.5, -4.5))
 
+	-- X shown briefly when a key link couldn't be fetched or copied
+	local getKeyErrorHolder = centered(getKey, 16, 16)
+	getKeyErrorHolder.Visible = false
+	local function errorBar(a, b)
+		local d = b - a
+		local bar = make("Frame", {
+			AnchorPoint = Vector2.new(0.5, 0.5),
+			Position = UDim2.new(0.5, a.X, 0.5, a.Y),
+			Size = UDim2.new(0, 0, 0, 2),
+			Rotation = math.deg(math.atan2(d.Y, d.X)),
+			BackgroundColor3 = "warn",
+			BorderSizePixel = 0,
+		}, getKeyErrorHolder)
+		make("UICorner", { CornerRadius = UDim.new(1, 0) }, bar)
+		return bar, d.Magnitude
+	end
+	local getKeyErrorBar1, getKeyErrorLen1 = errorBar(Vector2.new(-4.5, -4.5), Vector2.new(4.5, 4.5))
+	local getKeyErrorBar2, getKeyErrorLen2 = errorBar(Vector2.new(-4.5, 4.5), Vector2.new(4.5, -4.5))
+
 	local getKeyBusy = false
 
 	-- Hides the icon + label and spins up the loading ring
@@ -1196,6 +1215,25 @@ function UI.new(options)
 				return
 			end
 			getKeyCheckHolder.Visible = false
+			getKeyBusy = false
+			fade(getKeyContentItems, 1, 0.15)
+		end)
+	end
+
+	-- Morphs the spinner into an X, then fades back to the icon + label
+	local function getKeyShowError()
+		getKeySpin:Cancel()
+		getKeySpinnerHolder.Visible = false
+		getKeyErrorBar1.Size = UDim2.new(0, 0, 0, 2)
+		getKeyErrorBar2.Size = UDim2.new(0, 0, 0, 2)
+		getKeyErrorHolder.Visible = true
+		tween(getKeyErrorBar1, 0.14, { Size = UDim2.new(0, getKeyErrorLen1, 0, 2) })
+		tween(getKeyErrorBar2, 0.14, { Size = UDim2.new(0, getKeyErrorLen2, 0, 2) })
+		task.delay(1.1, function()
+			if not state.ready or state.closing then
+				return
+			end
+			getKeyErrorHolder.Visible = false
 			getKeyBusy = false
 			fade(getKeyContentItems, 1, 0.15)
 		end)
@@ -1611,20 +1649,22 @@ function UI.new(options)
 				return
 			end
 
-			if link and copyLink(link, "Key link", "link") then
-				getKeyShowCheck()
+			if link then
+				if copyLink(link, "Key link", "link") then
+					getKeyShowCheck()
+				else
+					getKeyShowError()
+				end
 				return
 			end
 
-			getKeySetLoading(false)
-			if not link then
-				if err == "RATE_LIMITED" then
-					notify("Slow down", "Wait 5 minutes before requesting another link.", "warn", "link", 5)
-				elseif err then
-					notify("Couldn't get a link", tostring(err), "warn", "link", 5)
-				else
-					notify("No link set", "The key link isn't set.", "warn", "link")
-				end
+			getKeyShowError()
+			if err == "RATE_LIMITED" then
+				notify("Slow down", "Wait 5 minutes before requesting another link.", "warn", "link", 5)
+			elseif err then
+				notify("Couldn't get a link", tostring(err), "warn", "link", 5)
+			else
+				notify("No link set", "The key link isn't set.", "warn", "link")
 			end
 		end)
 	end)
