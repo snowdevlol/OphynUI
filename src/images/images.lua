@@ -13,7 +13,6 @@ local Images = {
 	MOON_ICON = "rbxassetid://83380517901735",
 	SHADOW = "rbxassetid://6014261993",
 	GAME_PLACEHOLDER = "rbxassetid://74584987850498",
-	CART = "rbxassetid://rbxassetid://128420521375441", -- shopping cart icon, shown instead of KEY when shopbt is set
 }
 
 return Images
