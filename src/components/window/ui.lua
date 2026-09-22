@@ -681,8 +681,6 @@ function UI.new(options)
 		WEBSITE_URL = WEBSITE_LINK:match("^https?://") and WEBSITE_LINK or ("https://" .. WEBSITE_LINK)
 	end
 
-	local SHOP_LINK = tostring(cfg.shopbt or "")
-	local HAS_SHOP = SHOP_LINK ~= ""
 
 	-- KeySystem = { Key = {"1234", "5678"} or function(key) -> valid, reason, URL = "...", SaveKey = false,
 	--               API = { { Type = "platoboost" | "panda" | "jnkie", ... } } }
@@ -1054,7 +1052,7 @@ function UI.new(options)
 	local inputBox = frame(left, 22, 96, 228, 36, "input", 0)
 	inputBox.ClipsDescendants = true
 	round(inputBox, 8, "stroke")
-	icon(inputBox, 12, 10, "muted", HAS_SHOP and Images.CART or Images.KEY)
+	icon(inputBox, 12, 10, "muted", Images.KEY)
 
 	local KEY_MAX_LENGTH = 256
 
@@ -1106,14 +1104,14 @@ function UI.new(options)
 		BackgroundColor3 = "btn2",
 		BorderSizePixel = 0,
 		AutoButtonColor = false,
-		Text = HAS_SHOP and "Buy" or "Get a key",
+		Text = "Get a key",
 		TextSize = 13,
 		TextColor3 = "text",
 		FontFace = FONT,
 	}, left)
 	round(getKey, 8, "stroke")
 	make("UIPadding", { PaddingLeft = UDim.new(0, 24) }, getKey)
-	icon(getKey, -12, 9, "text", Images.LINK)
+	icon(getKey, -12, 9, "text", Images.KEY)
 
 	if not SHOW_GETKEY then
 		getKey.Visible = false
@@ -1403,7 +1401,7 @@ function UI.new(options)
 	end)
 
 	local LINKS = {
-		getKey = HAS_SHOP and SHOP_LINK or KEY_URL,
+		getKey = KEY_URL,
 		discord = INVITE_URL,
 		website = WEBSITE_URL,
 	}
@@ -1483,7 +1481,7 @@ function UI.new(options)
 		end
 
 		if LINKS.getKey ~= "" then
-			copyLink(LINKS.getKey, HAS_SHOP and "Buy link" or "Key link", "link")
+			copyLink(LINKS.getKey, "Key link", "link")
 			return
 		end
 
