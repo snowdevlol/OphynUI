@@ -435,6 +435,7 @@ local NOTIF_COLOR = "bg"
 local NOTIF_BLUR = 6
 
 local CHECK_TIME = 1
+local SAVED_CHECK_TIME = 0.15
 
 local WHITE = Color3.fromRGB(255, 255, 255)
 local settings = { tintIcons = true, tintLogo = true }
@@ -1531,8 +1532,30 @@ function UI.new(options)
 	make("UIPadding", { PaddingLeft = UDim.new(0, 24) }, getKey)
 	local getKeyIcon = icon(getKey, -12, 9, "text", Images.KEY)
 
-	-- Group made of the icon + label, so it can fade out as one while loading
-	local getKeyContentItems = prep(getKey)
+	-- Group made of the icon + label (NOT the button's own background), so it can
+	-- fade out as one while loading without the button turning transparent/black
+	local getKeyContentItems = {}
+	do
+		local function add(inst)
+			if inst:IsA("GuiObject") then
+				if inst ~= getKey then
+					getKeyContentItems[#getKeyContentItems + 1] =
+						{ inst, "BackgroundTransparency", inst.BackgroundTransparency }
+				end
+				if inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then
+					getKeyContentItems[#getKeyContentItems + 1] = { inst, "TextTransparency", inst.TextTransparency }
+				elseif inst:IsA("ImageLabel") or inst:IsA("ImageButton") then
+					getKeyContentItems[#getKeyContentItems + 1] = { inst, "ImageTransparency", inst.ImageTransparency }
+				end
+			elseif inst:IsA("UIStroke") then
+				getKeyContentItems[#getKeyContentItems + 1] = { inst, "Transparency", inst.Transparency }
+			end
+		end
+		add(getKey)
+		for _, d in ipairs(getKey:GetDescendants()) do
+			add(d)
+		end
+	end
 
 	-- Spinner shown while a key link is being fetched
 	local getKeySpinnerHolder = centered(getKey, 16, 16)
@@ -1563,12 +1586,26 @@ function UI.new(options)
 			Rotation = math.deg(math.atan2(d.Y, d.X)),
 			BackgroundColor3 = "text",
 			BorderSizePixel = 0,
+			Visible = false,
 		}, getKeyCheckHolder)
 		make("UICorner", { CornerRadius = UDim.new(1, 0) }, bar)
-		return bar, d.Magnitude
+		return { frame = bar, a = a, b = b, len = d.Magnitude }
 	end
-	local getKeyCheckBar1, getKeyCheckLen1 = checkBar(Vector2.new(-5, 0.5), Vector2.new(-1.5, 4))
-	local getKeyCheckBar2, getKeyCheckLen2 = checkBar(Vector2.new(-1.5, 4), Vector2.new(5.5, -4.5))
+	local getKeyCheckBar1 = checkBar(Vector2.new(-5, 0.5), Vector2.new(-1.5, 4))
+	local getKeyCheckBar2 = checkBar(Vector2.new(-1.5, 4), Vector2.new(5.5, -4.5))
+
+	-- Grows a bar from point a to point b (position slides to the midpoint as it grows,
+	-- same trick as the big "Correct Key!" checkmark's drawBar)
+	local function drawKeyBar(bar, time)
+		bar.frame.Size = UDim2.new(0, 0, 0, 2)
+		bar.frame.Position = UDim2.new(0.5, bar.a.X, 0.5, bar.a.Y)
+		bar.frame.Visible = true
+		local mid = (bar.a + bar.b) / 2
+		tween(bar.frame, time, {
+			Size = UDim2.new(0, bar.len, 0, 2),
+			Position = UDim2.new(0.5, mid.X, 0.5, mid.Y),
+		})
+	end
 
 	-- X shown briefly when a key link couldn't be fetched or copied
 	local getKeyErrorHolder = centered(getKey, 16, 16)
@@ -1582,12 +1619,13 @@ function UI.new(options)
 			Rotation = math.deg(math.atan2(d.Y, d.X)),
 			BackgroundColor3 = "warn",
 			BorderSizePixel = 0,
+			Visible = false,
 		}, getKeyErrorHolder)
 		make("UICorner", { CornerRadius = UDim.new(1, 0) }, bar)
-		return bar, d.Magnitude
+		return { frame = bar, a = a, b = b, len = d.Magnitude }
 	end
-	local getKeyErrorBar1, getKeyErrorLen1 = errorBar(Vector2.new(-4.5, -4.5), Vector2.new(4.5, 4.5))
-	local getKeyErrorBar2, getKeyErrorLen2 = errorBar(Vector2.new(-4.5, 4.5), Vector2.new(4.5, -4.5))
+	local getKeyErrorBar1 = errorBar(Vector2.new(-4.5, -4.5), Vector2.new(4.5, 4.5))
+	local getKeyErrorBar2 = errorBar(Vector2.new(-4.5, 4.5), Vector2.new(4.5, -4.5))
 
 	local getKeyBusy = false
 
@@ -1611,13 +1649,11 @@ function UI.new(options)
 	local function getKeyShowCheck()
 		getKeySpin:Cancel()
 		getKeySpinnerHolder.Visible = false
-		getKeyCheckBar1.Size = UDim2.new(0, 0, 0, 2)
-		getKeyCheckBar2.Size = UDim2.new(0, 0, 0, 2)
 		getKeyCheckHolder.Visible = true
-		tween(getKeyCheckBar1, 0.12, { Size = UDim2.new(0, getKeyCheckLen1, 0, 2) })
+		drawKeyBar(getKeyCheckBar1, 0.12)
 		task.delay(0.1, function()
 			if getKeyCheckHolder.Parent then
-				tween(getKeyCheckBar2, 0.16, { Size = UDim2.new(0, getKeyCheckLen2, 0, 2) })
+				drawKeyBar(getKeyCheckBar2, 0.16)
 			end
 		end)
 		task.delay(1.1, function()
@@ -1634,11 +1670,9 @@ function UI.new(options)
 	local function getKeyShowError()
 		getKeySpin:Cancel()
 		getKeySpinnerHolder.Visible = false
-		getKeyErrorBar1.Size = UDim2.new(0, 0, 0, 2)
-		getKeyErrorBar2.Size = UDim2.new(0, 0, 0, 2)
 		getKeyErrorHolder.Visible = true
-		tween(getKeyErrorBar1, 0.14, { Size = UDim2.new(0, getKeyErrorLen1, 0, 2) })
-		tween(getKeyErrorBar2, 0.14, { Size = UDim2.new(0, getKeyErrorLen2, 0, 2) })
+		drawKeyBar(getKeyErrorBar1, 0.14)
+		drawKeyBar(getKeyErrorBar2, 0.14)
 		task.delay(1.1, function()
 			if not state.ready or state.closing then
 				return
@@ -2374,10 +2408,11 @@ function UI.new(options)
 		spin:Play()
 		fade(spinnerItems, 1, 0.25)
 
+		local minCheckTime = isSavedKey and SAVED_CHECK_TIME or CHECK_TIME
 		local t0 = os.clock()
 		repeat
 			task.wait()
-		until (result and os.clock() - t0 >= CHECK_TIME) or os.clock() - t0 > 15
+		until (result and os.clock() - t0 >= minCheckTime) or os.clock() - t0 > 15
 
 		if not (result and result.ok and result.valid) then
 			fade(spinnerItems, 0, 0.25)
@@ -2413,21 +2448,25 @@ function UI.new(options)
 		checkScreen.Visible = true
 		fade(ringItems, 1, 0.25)
 		tween(ringScale, 0.45, { Scale = 1 }, Enum.EasingStyle.Back)
-		task.wait(0.4)
+		task.wait(isSavedKey and 0.15 or 0.4)
 
 		drawBar(checkBar1, 0.14)
 		task.wait(0.14)
 		drawBar(checkBar2, 0.22)
 		task.wait(0.22)
 
-		confetti(22, true)
-		task.delay(0.3, function()
-			confetti(12, false)
-		end)
+		if isSavedKey then
+			confetti(10, false)
+		else
+			confetti(22, true)
+			task.delay(0.3, function()
+				confetti(12, false)
+			end)
+		end
 
-		task.wait(1)
-		tween(checkText, 0.35, { TextTransparency = 0, Position = UDim2.new(0, 0, 0, 156) }, Enum.EasingStyle.Quint)
-		task.wait(1)
+		task.wait(isSavedKey and 0.2 or 1)
+		tween(checkText, 0.3, { TextTransparency = 0, Position = UDim2.new(0, 0, 0, 156) }, Enum.EasingStyle.Quint)
+		task.wait(isSavedKey and 0.35 or 1)
 
 		snapLocked = true
 		fade(ringItems, 0, 0.2)
@@ -2454,7 +2493,7 @@ function UI.new(options)
 		end)
 		task.wait(0.75)
 
-		task.wait(1)
+		task.wait(isSavedKey and 0.2 or 1)
 
 		local runError
 		task.spawn(function()
