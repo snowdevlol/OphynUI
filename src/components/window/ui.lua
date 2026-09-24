@@ -643,6 +643,13 @@ local function applyGetkeyAll()
 	end
 end
 
+-- Notification style (NotifStyle / KeySystem:SetNotifStyle). Read every time a notification is shown.
+local notifSettings = { style = nil }
+
+function UI.SetNotifStyle(style)
+	notifSettings.style = style ~= nil and tostring(style) or nil
+end
+
 function UI.SetGetkeyTitle(title)
 	getkeySettings.title = title ~= nil and tostring(title) or nil
 	applyGetkeyAll()
@@ -724,6 +731,19 @@ function UI.new(options)
 	-- Only Discord enabled (no Website card): it starts expanded to fill the free space
 	local SHOW_INTRO = cardFlag(true, "Intro", "intro")
 	local DISCORD_STARTS_OPEN = SHOW_DISCORD_CARD and not SHOW_WEBSITE_CARD and HAS_DISCORD
+
+	-- Notification style: "1" Stripe, "2" Pill, "3" Island, "4" Ring, "5" Solid
+	local NOTIF_STYLE = "1"
+	for _, source in ipairs({ options or {}, Variables }) do
+		local value = source.NotifStyle
+		if value == nil then
+			value = source.notifstyle
+		end
+		if value ~= nil then
+			NOTIF_STYLE = tostring(value)
+			break
+		end
+	end
 
 	local INVITE_DISPLAY, INVITE_URL, INVITE_CODE = "Not Configured", "", ""
 	if HAS_DISCORD then
@@ -1049,6 +1069,9 @@ function UI.new(options)
 		canvas = canvas,
 		state = state,
 		tintIcons = settings.tintIcons,
+		getStyle = function()
+			return notifSettings.style or NOTIF_STYLE
+		end,
 		cfg = {
 			NOTIF_W = NOTIF_W,
 			NOTIF_H = NOTIF_H,
@@ -2276,6 +2299,11 @@ function UI.new(options)
 		UI.SetGetkeyIcon(icon)
 		return self
 	end
+	function api:SetNotifStyle(style)
+		UI.SetNotifStyle(style)
+		return self
+	end
+	api.NotifStyle = api.SetNotifStyle
 	api.Gui = root
 
 	return setmetatable(api, {
