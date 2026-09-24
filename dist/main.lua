@@ -1606,7 +1606,6 @@ function UI.new(options)
 		submit.Size = UDim2.new(0, 228, 0, 34)
 	end
 
-	welcomeName.TextTruncate = Enum.TextTruncate.AtEnd
 
 	frame(content, 272, 20, 1, 220, "stroke", 0)
 
