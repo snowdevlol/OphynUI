@@ -8,11 +8,10 @@ return {
 
 	-- Buttons Config
 	getkey = true,
-	shopbt = "", 
 
 	-- Intro Config
+	Intro = "true", -- "false": fade-in on open, fade-out on close
 	startintro_size = 80, -- initial square size
-	introloading_time = 3,
 	squareintro_time = 1.2,
 
 	-- Themes Config
@@ -23,9 +22,15 @@ return {
 	discord_link = "",
 	website_link = "",
 
+	-- Cards ("true" / "false")
+	Discord = "true",
+	Website = "false",
+
+	-- Notification style
+	NotifStyle = "1",
+
 	-- Script Execution
-	Execute = "",
-	Callback = function(key) -- roda depois do Execute; recebe a key digitada
-		-- ...
+	Callback = function(key)
+		-- your script here
 	end,
 }
