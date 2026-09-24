@@ -1584,6 +1584,24 @@ function UI.new(options)
 	fade(contentItems, 0)
 
 	local SUPPORTED_GAMES = {} -- [PlaceId] = true
+	-- SupportedGames: { [PlaceId] = true, ... } or a plain list { PlaceId, PlaceId, ... }.
+	-- What the person passes to KeySystem.new wins over the default in variables.lua.
+	for _, source in ipairs({ options or {}, Variables }) do
+		local value = source.SupportedGames
+		if value == nil then
+			value = source.supportedgames
+		end
+		if type(value) == "table" then
+			for k, v in pairs(value) do
+				if type(v) == "number" then
+					SUPPORTED_GAMES[v] = true
+				elseif v then
+					SUPPORTED_GAMES[tonumber(k) or k] = true
+				end
+			end
+			break
+		end
+	end
 
 	task.spawn(function()
 		local ok, info = pcall(function()
