@@ -163,22 +163,6 @@ function Notification.new(ctx)
 		return l
 	end
 
-	local function autoLabel(parent, str, size, color, bold, order)
-		return make("TextLabel", {
-			LayoutOrder = order,
-			Size = UDim2.new(0, 0, 0, 20),
-			AutomaticSize = Enum.AutomaticSize.X,
-			BackgroundTransparency = 1,
-			BorderSizePixel = 0,
-			Text = str,
-			TextSize = size,
-			TextColor3 = color,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			TextYAlignment = Enum.TextYAlignment.Center,
-			FontFace = bold and FONT_BOLD or FONT,
-		}, parent)
-	end
-
 	local function iconImage(parent, spec, color, size)
 		return make("ImageLabel", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
@@ -228,20 +212,37 @@ function Notification.new(ctx)
 		}
 	end
 
-	-- 2 · Pill: one compact line
+	-- 2 · Pill: compact capsule; long text wraps to more lines (never cut)
+	local function escapeRich(str)
+		return (str:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"))
+	end
+
 	local function buildPill(title, message, color, spec)
 		local H = 36
-		local wrapper = newWrapper(cornerHolder, NOTIF_W, H)
+		local wrapper = make("Frame", {
+			LayoutOrder = notifCount,
+			Size = UDim2.new(0, NOTIF_W, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+		}, cornerHolder)
+		make("UIPadding", { PaddingBottom = UDim.new(0, 8) }, wrapper)
+
 		local toast = newToast(wrapper, {
 			AnchorPoint = Vector2.new(1, 0),
 			Position = UDim2.new(1, 40, 0, 0),
-			Size = UDim2.new(0, 0, 0, H),
-			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.new(0, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.XY,
 			BackgroundColor3 = C[NOTIF_COLOR],
 			BackgroundTransparency = NOTIF_TRANSPARENCY,
 		}, H / 2, C.stroke)
-		make("UISizeConstraint", { MaxSize = Vector2.new(NOTIF_W, H) }, toast)
-		make("UIPadding", { PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 14) }, toast)
+		make("UISizeConstraint", { MinSize = Vector2.new(0, H) }, toast)
+		make("UIPadding", {
+			PaddingLeft = UDim.new(0, 6),
+			PaddingRight = UDim.new(0, 14),
+			PaddingTop = UDim.new(0, 6),
+			PaddingBottom = UDim.new(0, 6),
+		}, toast)
 		make("UIListLayout", {
 			FillDirection = Enum.FillDirection.Horizontal,
 			VerticalAlignment = Enum.VerticalAlignment.Center,
@@ -258,13 +259,26 @@ function Notification.new(ctx)
 		make("UICorner", { CornerRadius = UDim.new(1, 0) }, badge)
 		iconImage(badge, spec, contrastOn(color), math.min(spec[2], 14))
 
-		autoLabel(toast, title, 13, C.text, true, 2)
+		local rich = "<b>" .. escapeRich(title) .. "</b>"
 		if message ~= "" then
-			if #message > 30 then
-				message = message:sub(1, 29) .. "..."
-			end
-			autoLabel(toast, message, 12, C.muted, false, 3)
+			rich = rich .. '  <font color="#' .. C.muted:ToHex() .. '">' .. escapeRich(message) .. "</font>"
 		end
+		local body = make("TextLabel", {
+			LayoutOrder = 2,
+			Size = UDim2.new(0, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.XY,
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			RichText = true,
+			TextWrapped = true,
+			Text = rich,
+			TextSize = 13,
+			TextColor3 = C.text,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextYAlignment = Enum.TextYAlignment.Center,
+			FontFace = FONT,
+		}, toast)
+		make("UISizeConstraint", { MaxSize = Vector2.new(NOTIF_W - 52, math.huge) }, body)
 
 		return {
 			wrapper = wrapper,
@@ -417,11 +431,15 @@ function Notification.new(ctx)
 		["5"] = buildSolid,
 	}
 
-	local function resolveStyle()
+	local function resolveKey()
 		local raw = ctx.getStyle and ctx.getStyle() or "1"
 		local key = (tostring(raw):lower():gsub("%s+", ""))
 		key = STYLE_BY_NAME[key] or key
-		return STYLES[key] or STYLES["1"]
+		return STYLES[key] and key or "1"
+	end
+
+	local function resolveStyle()
+		return STYLES[resolveKey()]
 	end
 
 	local function notify(title, message, kind, iconKey, duration)
@@ -460,7 +478,11 @@ function Notification.new(ctx)
 				tween(toast, 0.3, { Position = n.startPos }, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
 			end
 			task.delay(0.28, function()
-				tween(wrapper, 0.2, { Size = UDim2.new(wrapper.Size.X.Scale, wrapper.Size.X.Offset, 0, 0) })
+				local size = wrapper.Size
+				local height = wrapper.AbsoluteSize.Y
+				wrapper.AutomaticSize = Enum.AutomaticSize.None
+				wrapper.Size = UDim2.new(size.X.Scale, size.X.Offset, 0, height)
+				tween(wrapper, 0.2, { Size = UDim2.new(size.X.Scale, size.X.Offset, 0, 0) })
 				task.delay(0.22, function()
 					wrapper:Destroy()
 				end)
@@ -531,6 +553,7 @@ function Notification.new(ctx)
 	return {
 		notify = notify,
 		dismissAll = dismissAll,
+		styleKey = resolveKey,
 		blur = Blur,
 	}
 end
