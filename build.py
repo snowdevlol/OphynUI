@@ -27,6 +27,44 @@ local function import(path)
 end
 """
 
+FOOTER = """
+local KeySystem = {}
+
+function KeySystem.new(options)
+\treturn import("__ENTRY__").new(options)
+end
+
+-- Works as KeySystem:SetGetkeyTitle("...") or KeySystem.SetGetkeyTitle("...")
+local function firstArg(a, b)
+\tif a == KeySystem then
+\t\treturn b
+\tend
+\treturn a
+end
+
+function KeySystem.SetGetkeyTitle(a, b)
+\timport("__ENTRY__").SetGetkeyTitle(firstArg(a, b))
+\treturn KeySystem
+end
+
+function KeySystem.SetGetkeyIcon(a, b)
+\timport("__ENTRY__").SetGetkeyIcon(firstArg(a, b))
+\treturn KeySystem
+end
+
+-- Works as KeySystem:SetNotifStyle("3") / KeySystem:NotifStyle("3")
+function KeySystem.SetNotifStyle(a, b)
+\timport("__ENTRY__").SetNotifStyle(firstArg(a, b))
+\treturn KeySystem
+end
+
+KeySystem.NotifStyle = KeySystem.SetNotifStyle
+
+KeySystem.Jnkie = import("utilities/jnkie")
+
+return KeySystem
+"""
+
 
 def main():
     parts = [HEADER]
@@ -35,14 +73,7 @@ def main():
         source = file.read_text(encoding="utf-8").rstrip() + "\n"
         parts.append(f'\n__modules["{name}"] = function()\n{source}end\n')
 
-    parts.append(
-        "\nlocal KeySystem = {}\n\n"
-        "function KeySystem.new(options)\n"
-        f'\treturn import("{ENTRY}").new(options)\n'
-        "end\n\n"
-        'KeySystem.Jnkie = import("utilities/jnkie")\n\n'
-        "return KeySystem\n"
-    )
+    parts.append(FOOTER.replace("__ENTRY__", ENTRY))
 
     OUT.parent.mkdir(exist_ok=True)
     OUT.write_text("".join(parts), encoding="utf-8")
