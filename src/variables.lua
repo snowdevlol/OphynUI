@@ -29,6 +29,9 @@ return {
 	-- Notification style
 	NotifStyle = "1",
 
+	-- Games
+	SupportedGames = {},
+
 	-- Script Execution
 	Callback = function(key)
 		-- your script here
