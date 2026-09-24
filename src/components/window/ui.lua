@@ -645,6 +645,21 @@ function UI.new(options)
 	local FOLDER = cfg.Folder
 	local LOGO = assetId(cfg.Logo) or Images.LOGO
 
+	-- Preloads every icon (+ the logo) as early as possible, so it's all cached and
+	-- ready by the time LoadingTime is over and the UI becomes interactive.
+	task.spawn(function()
+		pcall(function()
+			local list = {}
+			for _, id in pairs(Images) do
+				if type(id) == "string" then
+					table.insert(list, id)
+				end
+			end
+			table.insert(list, LOGO)
+			game:GetService("ContentProvider"):PreloadAsync(list)
+		end)
+	end)
+
 	local INTRO_SIZE = tonumber(cfg.startintro_size) or 80
 	local LOADING_TIME = tonumber(cfg.introloading_time) or 3
 	local SQUARE_TIME = tonumber(cfg.squareintro_time) or 1.2
@@ -652,6 +667,7 @@ function UI.new(options)
 	settings.tintLogo = asBool(cfg.Changelogocolor, true)
 	settings.tintIcons = asBool(cfg.Changeiconscolor, true)
 	local SHOW_GETKEY = asBool(cfg.getkey, true)
+	local SHOW_INTRO = asBool(cfg.intro, true)
 
 	local themeName = cfg.Theme
 	if not THEMES[themeName] then
@@ -664,6 +680,13 @@ function UI.new(options)
 	local WEBSITE_LINK = tostring(cfg.website_link or "")
 	local HAS_DISCORD = DISCORD_LINK ~= ""
 	local HAS_WEBSITE = WEBSITE_LINK ~= ""
+
+	-- card = whether each card shows up at all, separate from whether a link is set.
+	-- Discord and Information default to shown; Website defaults to whatever HAS_WEBSITE
+	-- is (most people don't have one, so it stays hidden unless a link is actually given).
+	local SHOW_DISCORD_CARD = asBool(cfg.discord, true)
+	local SHOW_WEBSITE_CARD = asBool(cfg.website, HAS_WEBSITE)
+	local SHOW_INFO_CARD = asBool(cfg.information, true)
 
 	local INVITE_DISPLAY, INVITE_URL, INVITE_CODE = "Not Configured", "", ""
 	if HAS_DISCORD then
@@ -819,6 +842,52 @@ function UI.new(options)
 			if contents ~= "" then
 				SAVED_KEY = contents
 			end
+		end
+	end
+
+	-- Information card stats: how many key checks were valid, how many came back
+	-- expired, and when a key last passed. Stored locally per Folder + Title, same
+	-- as the saved key, just under a different hashed file name.
+	local STATS_HASH = hashName(tostring(FOLDER or "") .. "|" .. HUB_NAME .. "|stats")
+	local STATS_FILE = (FOLDER and FOLDER ~= "" and (FOLDER .. "/" .. STATS_HASH)) or STATS_HASH
+
+	local STATS = { valid = 0, expired = 0, last = 0 }
+	do
+		local contents = safeReadFile(STATS_FILE)
+		if contents then
+			local ok, data = pcall(function()
+				return HttpService:JSONDecode(contents)
+			end)
+			if ok and type(data) == "table" then
+				STATS.valid = tonumber(data.valid) or 0
+				STATS.expired = tonumber(data.expired) or 0
+				STATS.last = tonumber(data.last) or 0
+			end
+		end
+	end
+
+	local function saveStats()
+		local ok, encoded = pcall(function()
+			return HttpService:JSONEncode(STATS)
+		end)
+		if ok then
+			safeWriteFile(STATS_FILE, encoded)
+		end
+	end
+
+	local function formatAgo(ts)
+		if not ts or ts <= 0 then
+			return "Never"
+		end
+		local diff = os.time() - ts
+		if diff < 60 then
+			return "Just now"
+		elseif diff < 3600 then
+			return math.floor(diff / 60) .. " min ago"
+		elseif diff < 86400 then
+			return math.floor(diff / 3600) .. " h ago"
+		else
+			return math.floor(diff / 86400) .. " d ago"
 		end
 	end
 
@@ -1122,177 +1191,11 @@ function UI.new(options)
 	make("UIPadding", { PaddingLeft = UDim.new(0, 24) }, getKey)
 	local getKeyIcon = icon(getKey, -12, 9, "text", Images.KEY)
 
-	-- Group made of the icon + label (NOT the button's own background), so it can
-	-- fade out as one while loading without the button turning transparent/black
-	local getKeyContentItems = {}
-	do
-		local function add(inst)
-			if inst:IsA("GuiObject") then
-				if inst ~= getKey then
-					getKeyContentItems[#getKeyContentItems + 1] =
-						{ inst, "BackgroundTransparency", inst.BackgroundTransparency }
-				end
-				if inst:IsA("TextLabel") or inst:IsA("TextButton") or inst:IsA("TextBox") then
-					getKeyContentItems[#getKeyContentItems + 1] = { inst, "TextTransparency", inst.TextTransparency }
-				elseif inst:IsA("ImageLabel") or inst:IsA("ImageButton") then
-					getKeyContentItems[#getKeyContentItems + 1] = { inst, "ImageTransparency", inst.ImageTransparency }
-				end
-			elseif inst:IsA("UIStroke") then
-				getKeyContentItems[#getKeyContentItems + 1] = { inst, "Transparency", inst.Transparency }
-			end
-		end
-		add(getKey)
-		for _, d in ipairs(getKey:GetDescendants()) do
-			add(d)
-		end
-	end
-
-	-- Spinner shown while a key link is being fetched
-	local getKeySpinnerHolder = centered(getKey, 16, 16)
-	getKeySpinnerHolder.Visible = false
-	local getKeySpinnerRing = make("Frame", {
-		Size = UDim2.new(1, 0, 1, 0),
-		BackgroundTransparency = 1,
-		BorderSizePixel = 0,
-	}, getKeySpinnerHolder)
-	make("UICorner", { CornerRadius = UDim.new(1, 0) }, getKeySpinnerRing)
-	local getKeySpinnerStroke = make("UIStroke", { Thickness = 2, Color = "text" }, getKeySpinnerRing)
-	comet(getKeySpinnerStroke)
-	local getKeySpin = TweenService:Create(
-		getKeySpinnerRing,
-		TweenInfo.new(0.7, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
-		{ Rotation = 360 }
-	)
-
-	-- Checkmark shown briefly once a link is copied successfully
-	local getKeyCheckHolder = centered(getKey, 16, 16)
-	getKeyCheckHolder.Visible = false
-	local function checkBar(a, b)
-		local d = b - a
-		local bar = make("Frame", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(0.5, a.X, 0.5, a.Y),
-			Size = UDim2.new(0, 0, 0, 2),
-			Rotation = math.deg(math.atan2(d.Y, d.X)),
-			BackgroundColor3 = "text",
-			BorderSizePixel = 0,
-			Visible = false,
-		}, getKeyCheckHolder)
-		make("UICorner", { CornerRadius = UDim.new(1, 0) }, bar)
-		return { frame = bar, a = a, b = b, len = d.Magnitude }
-	end
-	local getKeyCheckBar1 = checkBar(Vector2.new(-5, 0.5), Vector2.new(-1.5, 4))
-	local getKeyCheckBar2 = checkBar(Vector2.new(-1.5, 4), Vector2.new(5.5, -4.5))
-
-	-- Grows a bar from point a to point b (position slides to the midpoint as it grows,
-	-- same trick as the big "Correct Key!" checkmark's drawBar)
-	local function drawKeyBar(bar, time)
-		bar.frame.Size = UDim2.new(0, 0, 0, 2)
-		bar.frame.Position = UDim2.new(0.5, bar.a.X, 0.5, bar.a.Y)
-		bar.frame.Visible = true
-		local mid = (bar.a + bar.b) / 2
-		tween(bar.frame, time, {
-			Size = UDim2.new(0, bar.len, 0, 2),
-			Position = UDim2.new(0.5, mid.X, 0.5, mid.Y),
-		})
-	end
-
-	-- X shown briefly when a key link couldn't be fetched or copied
-	local getKeyErrorHolder = centered(getKey, 16, 16)
-	getKeyErrorHolder.Visible = false
-	local function errorBar(a, b)
-		local d = b - a
-		local bar = make("Frame", {
-			AnchorPoint = Vector2.new(0.5, 0.5),
-			Position = UDim2.new(0.5, a.X, 0.5, a.Y),
-			Size = UDim2.new(0, 0, 0, 2),
-			Rotation = math.deg(math.atan2(d.Y, d.X)),
-			BackgroundColor3 = "warn",
-			BorderSizePixel = 0,
-			Visible = false,
-		}, getKeyErrorHolder)
-		make("UICorner", { CornerRadius = UDim.new(1, 0) }, bar)
-		return { frame = bar, a = a, b = b, len = d.Magnitude }
-	end
-	local getKeyErrorBar1 = errorBar(Vector2.new(-4.5, -4.5), Vector2.new(4.5, 4.5))
-	local getKeyErrorBar2 = errorBar(Vector2.new(-4.5, 4.5), Vector2.new(4.5, -4.5))
-
-	local getKeyBusy = false
-
-	-- Hides the icon + label and spins up the loading ring
-	local function getKeySetLoading(on)
-		if on then
-			getKeyBusy = true
-			fade(getKeyContentItems, 0, 0.15)
-			getKeySpinnerRing.Rotation = 0
-			getKeySpinnerHolder.Visible = true
-			getKeySpin:Play()
-		else
-			getKeySpin:Cancel()
-			getKeySpinnerHolder.Visible = false
-			getKeyBusy = false
-			fade(getKeyContentItems, 1, 0.15)
-		end
-	end
-
-	-- Morphs the spinner into a checkmark, then fades back to the icon + label
-	local function getKeyShowCheck()
-		getKeySpin:Cancel()
-		getKeySpinnerHolder.Visible = false
-		getKeyCheckHolder.Visible = true
-		drawKeyBar(getKeyCheckBar1, 0.12)
-		task.delay(0.1, function()
-			if getKeyCheckHolder.Parent then
-				drawKeyBar(getKeyCheckBar2, 0.16)
-			end
-		end)
-		task.delay(1.1, function()
-			if not state.ready or state.closing then
-				return
-			end
-			getKeyCheckHolder.Visible = false
-			getKeyBusy = false
-			fade(getKeyContentItems, 1, 0.15)
-		end)
-	end
-
-	-- Morphs the spinner into an X, then fades back to the icon + label
-	local function getKeyShowError()
-		getKeySpin:Cancel()
-		getKeySpinnerHolder.Visible = false
-		getKeyErrorHolder.Visible = true
-		drawKeyBar(getKeyErrorBar1, 0.14)
-		drawKeyBar(getKeyErrorBar2, 0.14)
-		task.delay(1.1, function()
-			if not state.ready or state.closing then
-				return
-			end
-			getKeyErrorHolder.Visible = false
-			getKeyBusy = false
-			fade(getKeyContentItems, 1, 0.15)
-		end)
-	end
-
 	if not SHOW_GETKEY then
 		getKey.Visible = false
 		submit.Size = UDim2.new(0, 228, 0, 34)
 	end
 
-	local statusLabel = text(left, "", 22, 186, 228, 16, 12, "muted")
-
-	local avatar = make("ImageLabel", {
-		Position = UDim2.new(0, 22, 0, 214),
-		Size = UDim2.new(0, 32, 0, 32),
-		BackgroundColor3 = "input",
-		BorderSizePixel = 0,
-		Image = player and ("rbxthumb://type=AvatarHeadShot&id=" .. player.UserId .. "&w=150&h=150") or "",
-		ScaleType = Enum.ScaleType.Crop,
-	}, left)
-	round(avatar, 16, "stroke")
-
-	text(left, "Welcome Back", 62, 215, 188, 14, 11, "muted")
-	local welcomeName = text(left, ((player and player.DisplayName) or "User") .. "!", 62, 229, 188, 16, 14, "text")
-	welcomeName.FontFace = FONT_BOLD
 	welcomeName.TextTruncate = Enum.TextTruncate.AtEnd
 
 	frame(content, 272, 20, 1, 220, "stroke", 0)
@@ -1349,8 +1252,8 @@ function UI.new(options)
 
 	local discord, discordIcon, discordTitle, discordSub = linkButton(158, "Discord", INVITE_DISPLAY, Images.DISCORD)
 	local website = linkButton(206, "Website", WEBSITE_DISPLAY, Images.LINK)
-	discord.Visible = true
-	website.Visible = true
+	discord.Visible = SHOW_DISCORD_CARD
+	website.Visible = SHOW_WEBSITE_CARD
 	discordTitle.TextTruncate = Enum.TextTruncate.AtEnd
 
 	discord.ClipsDescendants = true
@@ -1395,6 +1298,10 @@ function UI.new(options)
 	local extraItems = prep(discordExtra)
 	local rowsItems = prep(rows)
 	local discordIconItems = prep(discordIcon)
+
+	-- Information card: local stats only (valid keys, expired keys, last used)
+	local infoCard, infoIcon, infoTitle, infoSub = linkButton(254, "Information", "Tap to view", Images.KEY)
+	infoCard.Visible = SHOW_INFO_CARD
 
 	local closeBtn = make("TextButton", {
 		Name = "CloseButton",
@@ -1469,157 +1376,6 @@ function UI.new(options)
 
 	executorLabel.Text = detectExecutor()
 
-	task.spawn(function()
-		local ok, info = pcall(function()
-			return MarketplaceService:GetProductInfo(game.PlaceId)
-		end)
-		gameName.Text = (ok and info and info.Name) or "Unknown game"
-
-		if game.GameId ~= 0 then
-			gameImg.Image = "rbxthumb://type=GameIcon&id=" .. game.GameId .. "&w=150&h=150"
-		end
-
-		if SUPPORTED_GAMES[game.PlaceId] then
-			gameStatus.Text = "Supported"
-			setRole(gameStatus, "TextColor3", "success")
-		else
-			gameStatus.Text = "Not in our list"
-			setRole(gameStatus, "TextColor3", "muted")
-		end
-	end)
-
-	closeBtn.MouseEnter:Connect(function()
-		if state.closing or state.popupOpen or not state.ready then
-			return
-		end
-		tintTo(closeIcon, C.text)
-		tween(closeBtn, 0.15, { BackgroundTransparency = 0 })
-	end)
-	closeBtn.MouseLeave:Connect(function()
-		if state.closing or state.popupOpen or not state.ready then
-			return
-		end
-		tintTo(closeIcon, C.muted)
-		tween(closeBtn, 0.15, { BackgroundTransparency = 1 })
-	end)
-
-	moonBtn.MouseEnter:Connect(function()
-		if state.closing or state.popupOpen or not state.ready then
-			return
-		end
-		tintTo(moonIcon, C.text)
-		tween(moonBtn, 0.15, { BackgroundTransparency = 0 })
-	end)
-	moonBtn.MouseLeave:Connect(function()
-		if state.closing or state.popupOpen or not state.ready then
-			return
-		end
-		tintTo(moonIcon, C.muted)
-		tween(moonBtn, 0.15, { BackgroundTransparency = 1 })
-	end)
-
-	closeGui = function()
-		if state.closing then
-			return
-		end
-		state.closing = true
-		state.ready = false
-		state.popupOpen = false
-
-		notifs.dismissAll()
-
-		tintTo(closeIcon, C.muted)
-		tween(closeBtn, 0.15, { BackgroundTransparency = 1 })
-		tintTo(moonIcon, C.muted)
-		tween(moonBtn, 0.15, { BackgroundTransparency = 1 })
-
-		fade(contentItems, 0, 0.2)
-
-		task.wait(0.2)
-		content.Visible = false
-
-		introLogo.Position = UDim2.new(0.5, 0, 0.5, 0)
-		tween(introLogo, 0.4, { ImageTransparency = 0 })
-		tween(borderStroke, 0.5, { Transparency = 0.55 })
-		tween(main, 0.65, { Size = UDim2.new(0, INTRO_SIZE, 0, INTRO_SIZE) }, Enum.EasingStyle.Quart, Enum.EasingDirection.InOut)
-		task.wait(0.7)
-
-		tween(canvas, 0.35, { BackgroundTransparency = 1 })
-		tween(decorGroup, 0.35, { GroupTransparency = 1 })
-		tween(introLogo, 0.35, { ImageTransparency = 1 })
-		tween(borderStroke, 0.35, { Transparency = 1 })
-		tween(shadow, 0.35, { ImageTransparency = 1 })
-		task.wait(0.4)
-		root:Destroy()
-	end
-
-	closeBtn.MouseButton1Click:Connect(function()
-		if not state.ready or state.popupOpen or state.closing then
-			return
-		end
-		task.spawn(closeGui)
-	end)
-
-	local LINKS = {
-		getKey = KEY_URL,
-		discord = INVITE_URL,
-		website = WEBSITE_URL,
-	}
-
-	local function validateStatic(key)
-		if isCallable(KEY_LIST) then
-			local ok, valid, reason = pcall(KEY_LIST, key)
-			if not ok then
-				warn("[" .. HUB_NAME .. "] KeySystem.Key validator error: " .. tostring(valid))
-				return false, tostring(valid)
-			end
-			if valid ~= true and reason then
-				warn("[" .. HUB_NAME .. "] key rejected: " .. tostring(reason))
-			end
-			return valid == true, reason
-		end
-
-		for k, v in pairs(KEY_LIST or {}) do
-			if type(k) == "number" then
-				if tostring(v):match("^%s*(.-)%s*$") == key then
-					return true
-				end
-			elseif k == key and v then
-				return true
-			end
-		end
-		warn("[" .. HUB_NAME .. "] key not found in KeySystem.Key: '" .. key .. "'")
-		return false
-	end
-
-	-- Accepts a key from KeySystem.Key (if set) or from any KeySystem.API service
-	local function validateKey(key)
-		local lastReason
-		if KEY_LIST ~= nil then
-			local valid, reason = validateStatic(key)
-			if valid then
-				return true
-			end
-			lastReason = reason
-		end
-
-		for _, service in ipairs(API_SERVICES) do
-			local ok, valid, reason = pcall(service.CheckKey, service, key)
-			if ok and valid == true then
-				return true
-			end
-			if not ok then
-				reason = tostring(valid)
-			end
-			if reason then
-				warn("[" .. HUB_NAME .. "] key rejected: " .. tostring(reason))
-				lastReason = reason
-			end
-		end
-
-		return false, lastReason
-	end
-
 	local function copyLink(url, label, iconKey)
 		if not state.ready or state.closing then
 			return false
@@ -1634,34 +1390,40 @@ function UI.new(options)
 		return false
 	end
 
+	local fetchingKeyLink = false
+
 	getKey.MouseButton1Click:Connect(function()
-		if not state.ready or state.closing or getKeyBusy then
+		if not state.ready or state.closing then
 			return
 		end
 
-		getKeySetLoading(true)
+		if LINKS.getKey ~= "" then
+			copyLink(LINKS.getKey, "Key link", "link")
+			return
+		end
 
-		task.spawn(function()
-			local link, err
+		-- Services that can generate a key link (KeySystem.API and Jnkie)
+		local linkProviders = {}
+		for _, service in ipairs(API_SERVICES) do
+			if service.GetKeyLink then
+				table.insert(linkProviders, function()
+					return service:GetKeyLink()
+				end)
+			end
+		end
+		if KEY_JNKIE then
+			table.insert(linkProviders, function()
+				return KEY_JNKIE:GetKeyLink()
+			end)
+		end
 
-			if LINKS.getKey ~= "" then
-				link = LINKS.getKey
-			else
-				-- Services that can generate a key link (KeySystem.API and Jnkie)
-				local linkProviders = {}
-				for _, service in ipairs(API_SERVICES) do
-					if service.GetKeyLink then
-						table.insert(linkProviders, function()
-							return service:GetKeyLink()
-						end)
-					end
-				end
-				if KEY_JNKIE then
-					table.insert(linkProviders, function()
-						return KEY_JNKIE:GetKeyLink()
-					end)
-				end
-
+		if #linkProviders > 0 then
+			if fetchingKeyLink then
+				return
+			end
+			fetchingKeyLink = true
+			task.spawn(function()
+				local link, err
 				for _, getLink in ipairs(linkProviders) do
 					local ok, res, res2 = pcall(getLink)
 					if ok and res then
@@ -1670,37 +1432,27 @@ function UI.new(options)
 					end
 					err = ok and res2 or (not ok and res) or err
 				end
-
-				if not link and LINKS.website ~= "" then
-					link = LINKS.website
+				fetchingKeyLink = false
+				if not state.ready or state.closing then
+					return
 				end
-			end
-
-			-- Keeps the loading state on screen for a bit so it doesn't just flash
-			task.wait(0.35)
-
-			if not state.ready or state.closing then
-				return
-			end
-
-			if link then
-				if copyLink(link, "Key link", "link") then
-					getKeyShowCheck()
+				if link then
+					copyLink(link, "Key link", "link")
+				elseif err == "RATE_LIMITED" then
+					notify("Slow down", "Wait 5 minutes before requesting another link.", "warn", "link", 5)
 				else
-					getKeyShowError()
+					notify("Couldn't get a link", tostring(err or "Unknown error"), "warn", "link", 5)
 				end
-				return
-			end
+			end)
+			return
+		end
 
-			getKeyShowError()
-			if err == "RATE_LIMITED" then
-				notify("Slow down", "Wait 5 minutes before requesting another link.", "warn", "link", 5)
-			elseif err then
-				notify("Couldn't get a link", tostring(err), "warn", "link", 5)
-			else
-				notify("No link set", "The key link isn't set.", "warn", "link")
-			end
-		end)
+		if LINKS.website ~= "" then
+			copyLink(LINKS.website, "Key link", "link")
+			return
+		end
+
+		notify("No link set", "The key link isn't set.", "warn", "link")
 	end)
 
 	local httpRequest = request or http_request or (syn and syn.request) or (http and http.request)
@@ -1807,10 +1559,46 @@ function UI.new(options)
 		task.spawn(fetchDiscord)
 	end
 
-	local LAYOUT = {
-		collapsed = { divider = 148, discordY = 158, discordH = 40, websiteY = 206 },
-		expanded = { divider = 106, discordY = 114, discordH = 82, websiteY = 204 },
-	}
+	-- Stacks whichever cards are enabled (Discord, Website, Information, in that
+	-- order), shifting Website/Information down while Discord is expanded and back
+	-- up when it collapses.
+	local CARD_GAP = 8
+	local cardOrder = {}
+	if SHOW_DISCORD_CARD then
+		table.insert(cardOrder, discord)
+	end
+	if SHOW_WEBSITE_CARD then
+		table.insert(cardOrder, website)
+	end
+	if SHOW_INFO_CARD then
+		table.insert(cardOrder, infoCard)
+	end
+
+	local function layoutCards(instant)
+		local Quint = Enum.EasingStyle.Quint
+		local divider = discordOpen and 106 or 148
+		if instant then
+			rightDivider.Position = UDim2.new(0, 20, 0, divider)
+		else
+			tween(rightDivider, 0.55, { Position = UDim2.new(0, 20, 0, divider) }, Quint)
+		end
+
+		local y = discordOpen and 114 or 158
+		for _, card in ipairs(cardOrder) do
+			local h = (card == discord and discordOpen) and 82 or 40
+			if instant then
+				card.Position = UDim2.new(0, 20, 0, y)
+				card.Size = UDim2.new(0, 147, 0, h)
+			else
+				tween(card, 0.55, {
+					Position = UDim2.new(0, 20, 0, y),
+					Size = UDim2.new(0, 147, 0, h),
+				}, Quint)
+			end
+			y = y + h + CARD_GAP
+		end
+	end
+	layoutCards(true)
 
 	local discordToken = 0
 
@@ -1819,15 +1607,9 @@ function UI.new(options)
 		refreshDiscordTitle()
 		discordToken += 1
 		local token = discordToken
-		local L = open and LAYOUT.expanded or LAYOUT.collapsed
 		local Quint = Enum.EasingStyle.Quint
 
-		tween(rightDivider, 0.55, { Position = UDim2.new(0, 20, 0, L.divider) }, Quint)
-		tween(discord, 0.55, {
-			Position = UDim2.new(0, 20, 0, L.discordY),
-			Size = UDim2.new(0, 147, 0, L.discordH),
-		}, Quint)
-		tween(website, 0.55, { Position = UDim2.new(0, 20, 0, L.websiteY) }, Quint)
+		layoutCards()
 
 		local textX = open and 40 or 36
 		tween(discordTitle, 0.4, { Position = UDim2.new(0, textX, 0, 6) }, Quint)
@@ -1892,6 +1674,19 @@ function UI.new(options)
 			return
 		end
 		copyLink(LINKS.website, "Website link", "link")
+	end)
+
+	infoCard.MouseButton1Click:Connect(function()
+		if not state.ready or state.closing then
+			return
+		end
+		notify(
+			"Key history",
+			("Valid: %d   Expired: %d   Last used: %s"):format(STATS.valid, STATS.expired, formatAgo(STATS.last)),
+			"success",
+			"key",
+			6
+		)
 	end)
 
 	local checkingKey = false
@@ -2012,6 +1807,10 @@ function UI.new(options)
 			fadeContent(1, 0.35)
 			if result and result.ok then
 				local detail = result.reason and tostring(result.reason) or "That key isn't valid. Get a new one."
+				if detail:lower():find("expir") then
+					STATS.expired += 1
+					saveStats()
+				end
 				notify("Invalid key", detail, "error")
 			else
 				local detail = result and result.valid and tostring(result.valid) or "Couldn't check your key. Try again."
@@ -2030,6 +1829,10 @@ function UI.new(options)
 		if KEY_SAVE then
 			safeWriteFile(KEY_FILE, key)
 		end
+
+		STATS.valid += 1
+		STATS.last = os.time()
+		saveStats()
 
 		fade(spinnerItems, 0, 0.25)
 		task.wait(0.25)
@@ -2210,31 +2013,45 @@ function UI.new(options)
 	root:GetPropertyChangedSignal("AbsoluteSize"):Connect(snap)
 
 	task.spawn(function()
-		main.Size = UDim2.new(0, INTRO_SIZE - 20, 0, INTRO_SIZE - 20)
-		tween(main, 0.6, { Size = UDim2.new(0, INTRO_SIZE, 0, INTRO_SIZE) }, Enum.EasingStyle.Quint)
-		tween(canvas, 0.5, { BackgroundTransparency = 0 })
-		tween(decorGroup, 0.5, { GroupTransparency = 0 })
-		tween(introLogo, 0.5, { ImageTransparency = 0 })
-		tween(borderStroke, 0.5, { Transparency = 0.55 })
-		tween(shadow, 0.5, { ImageTransparency = 0.6 })
-		task.wait(SQUARE_TIME)
+		if SHOW_INTRO then
+			main.Size = UDim2.new(0, INTRO_SIZE - 20, 0, INTRO_SIZE - 20)
+			tween(main, 0.6, { Size = UDim2.new(0, INTRO_SIZE, 0, INTRO_SIZE) }, Enum.EasingStyle.Quint)
+			tween(canvas, 0.5, { BackgroundTransparency = 0 })
+			tween(decorGroup, 0.5, { GroupTransparency = 0 })
+			tween(introLogo, 0.5, { ImageTransparency = 0 })
+			tween(borderStroke, 0.5, { Transparency = 0.55 })
+			tween(shadow, 0.5, { ImageTransparency = 0.6 })
+			task.wait(SQUARE_TIME)
 
-		tween(borderStroke, 0.7, { Transparency = 1 })
-		tween(main, 0.85, { Size = UDim2.new(0, FINAL_W, 0, FINAL_H) }, Enum.EasingStyle.Quint)
-		tween(introLogo, 0.7, { Position = UDim2.new(0.5, 0, 0.5, -20) }, Enum.EasingStyle.Quint)
-		task.wait(0.35)
-		spin:Play()
-		fade(spinnerItems, 1, 0.4)
+			tween(borderStroke, 0.7, { Transparency = 1 })
+			tween(main, 0.85, { Size = UDim2.new(0, FINAL_W, 0, FINAL_H) }, Enum.EasingStyle.Quint)
+			tween(introLogo, 0.7, { Position = UDim2.new(0.5, 0, 0.5, -20) }, Enum.EasingStyle.Quint)
+			task.wait(0.35)
+			spin:Play()
+			fade(spinnerItems, 1, 0.4)
 
-		task.wait(LOADING_TIME)
+			task.wait(LOADING_TIME)
 
-		fade(spinnerItems, 0, 0.3)
-		tween(introLogo, 0.3, { ImageTransparency = 1 })
-		task.wait(0.2)
+			fade(spinnerItems, 0, 0.3)
+			tween(introLogo, 0.3, { ImageTransparency = 1 })
+			task.wait(0.2)
+			spin:Cancel()
+		else
+			-- No intro animation: sit at final size, invisible, for LoadingTime (still
+			-- needed to detect the game/executor and let icons finish preloading),
+			-- then simply fade the whole window in.
+			main.Size = UDim2.new(0, FINAL_W, 0, FINAL_H)
+			task.wait(LOADING_TIME)
+
+			tween(canvas, 0.5, { BackgroundTransparency = 0 })
+			tween(decorGroup, 0.5, { GroupTransparency = 0 })
+			tween(shadow, 0.5, { ImageTransparency = 0.6 })
+			task.wait(0.25)
+		end
+
 		content.Visible = true
 		fade(contentItems, 1, 0.45)
 		task.wait(0.3)
-		spin:Cancel()
 		state.ready = true
 
 		if SAVED_KEY and not checkingKey then
