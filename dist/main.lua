@@ -185,22 +185,6 @@ function Notification.new(ctx)
 		return l
 	end
 
-	local function autoLabel(parent, str, size, color, bold, order)
-		return make("TextLabel", {
-			LayoutOrder = order,
-			Size = UDim2.new(0, 0, 0, 20),
-			AutomaticSize = Enum.AutomaticSize.X,
-			BackgroundTransparency = 1,
-			BorderSizePixel = 0,
-			Text = str,
-			TextSize = size,
-			TextColor3 = color,
-			TextXAlignment = Enum.TextXAlignment.Left,
-			TextYAlignment = Enum.TextYAlignment.Center,
-			FontFace = bold and FONT_BOLD or FONT,
-		}, parent)
-	end
-
 	local function iconImage(parent, spec, color, size)
 		return make("ImageLabel", {
 			AnchorPoint = Vector2.new(0.5, 0.5),
@@ -250,20 +234,37 @@ function Notification.new(ctx)
 		}
 	end
 
-	-- 2 · Pill: one compact line
+	-- 2 · Pill: compact capsule; long text wraps to more lines (never cut)
+	local function escapeRich(str)
+		return (str:gsub("&", "&amp;"):gsub("<", "&lt;"):gsub(">", "&gt;"))
+	end
+
 	local function buildPill(title, message, color, spec)
 		local H = 36
-		local wrapper = newWrapper(cornerHolder, NOTIF_W, H)
+		local wrapper = make("Frame", {
+			LayoutOrder = notifCount,
+			Size = UDim2.new(0, NOTIF_W, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.Y,
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+		}, cornerHolder)
+		make("UIPadding", { PaddingBottom = UDim.new(0, 8) }, wrapper)
+
 		local toast = newToast(wrapper, {
 			AnchorPoint = Vector2.new(1, 0),
 			Position = UDim2.new(1, 40, 0, 0),
-			Size = UDim2.new(0, 0, 0, H),
-			AutomaticSize = Enum.AutomaticSize.X,
+			Size = UDim2.new(0, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.XY,
 			BackgroundColor3 = C[NOTIF_COLOR],
 			BackgroundTransparency = NOTIF_TRANSPARENCY,
 		}, H / 2, C.stroke)
-		make("UISizeConstraint", { MaxSize = Vector2.new(NOTIF_W, H) }, toast)
-		make("UIPadding", { PaddingLeft = UDim.new(0, 6), PaddingRight = UDim.new(0, 14) }, toast)
+		make("UISizeConstraint", { MinSize = Vector2.new(0, H) }, toast)
+		make("UIPadding", {
+			PaddingLeft = UDim.new(0, 6),
+			PaddingRight = UDim.new(0, 14),
+			PaddingTop = UDim.new(0, 6),
+			PaddingBottom = UDim.new(0, 6),
+		}, toast)
 		make("UIListLayout", {
 			FillDirection = Enum.FillDirection.Horizontal,
 			VerticalAlignment = Enum.VerticalAlignment.Center,
@@ -280,13 +281,26 @@ function Notification.new(ctx)
 		make("UICorner", { CornerRadius = UDim.new(1, 0) }, badge)
 		iconImage(badge, spec, contrastOn(color), math.min(spec[2], 14))
 
-		autoLabel(toast, title, 13, C.text, true, 2)
+		local rich = "<b>" .. escapeRich(title) .. "</b>"
 		if message ~= "" then
-			if #message > 30 then
-				message = message:sub(1, 29) .. "..."
-			end
-			autoLabel(toast, message, 12, C.muted, false, 3)
+			rich = rich .. '  <font color="#' .. C.muted:ToHex() .. '">' .. escapeRich(message) .. "</font>"
 		end
+		local body = make("TextLabel", {
+			LayoutOrder = 2,
+			Size = UDim2.new(0, 0, 0, 0),
+			AutomaticSize = Enum.AutomaticSize.XY,
+			BackgroundTransparency = 1,
+			BorderSizePixel = 0,
+			RichText = true,
+			TextWrapped = true,
+			Text = rich,
+			TextSize = 13,
+			TextColor3 = C.text,
+			TextXAlignment = Enum.TextXAlignment.Left,
+			TextYAlignment = Enum.TextYAlignment.Center,
+			FontFace = FONT,
+		}, toast)
+		make("UISizeConstraint", { MaxSize = Vector2.new(NOTIF_W - 52, math.huge) }, body)
 
 		return {
 			wrapper = wrapper,
@@ -439,11 +453,15 @@ function Notification.new(ctx)
 		["5"] = buildSolid,
 	}
 
-	local function resolveStyle()
+	local function resolveKey()
 		local raw = ctx.getStyle and ctx.getStyle() or "1"
 		local key = (tostring(raw):lower():gsub("%s+", ""))
 		key = STYLE_BY_NAME[key] or key
-		return STYLES[key] or STYLES["1"]
+		return STYLES[key] and key or "1"
+	end
+
+	local function resolveStyle()
+		return STYLES[resolveKey()]
 	end
 
 	local function notify(title, message, kind, iconKey, duration)
@@ -482,7 +500,11 @@ function Notification.new(ctx)
 				tween(toast, 0.3, { Position = n.startPos }, Enum.EasingStyle.Quint, Enum.EasingDirection.In)
 			end
 			task.delay(0.28, function()
-				tween(wrapper, 0.2, { Size = UDim2.new(wrapper.Size.X.Scale, wrapper.Size.X.Offset, 0, 0) })
+				local size = wrapper.Size
+				local height = wrapper.AbsoluteSize.Y
+				wrapper.AutomaticSize = Enum.AutomaticSize.None
+				wrapper.Size = UDim2.new(size.X.Scale, size.X.Offset, 0, height)
+				tween(wrapper, 0.2, { Size = UDim2.new(size.X.Scale, size.X.Offset, 0, 0) })
 				task.delay(0.22, function()
 					wrapper:Destroy()
 				end)
@@ -553,6 +575,7 @@ function Notification.new(ctx)
 	return {
 		notify = notify,
 		dismissAll = dismissAll,
+		styleKey = resolveKey,
 		blur = Blur,
 	}
 end
@@ -1206,6 +1229,12 @@ local function applyGetkeyAll()
 	end
 end
 
+-- Readable icon/text color on top of a filled color
+local function contrastOn(color)
+	local luminance = 0.299 * color.R + 0.587 * color.G + 0.114 * color.B
+	return luminance > 0.55 and Color3.fromRGB(11, 11, 11) or Color3.fromRGB(255, 255, 255)
+end
+
 -- Notification style (NotifStyle / KeySystem:SetNotifStyle). Read every time a notification is shown.
 local notifSettings = { style = nil }
 
@@ -1593,7 +1622,7 @@ function UI.new(options)
 		BorderSizePixel = 0,
 		ClipsDescendants = true,
 	}, main)
-	make("UICorner", { CornerRadius = UDim.new(0, 10) }, canvas)
+	local canvasCorner = make("UICorner", { CornerRadius = UDim.new(0, 10) }, canvas)
 
 	local borderStroke = make("UIStroke", {
 		Thickness = 1,
@@ -1703,8 +1732,6 @@ function UI.new(options)
 		{ Rotation = 360 }
 	)
 
-	local MORPH_W, MORPH_H = NOTIF_W, NOTIF_H
-
 	local checkScreen = centered(canvas, FINAL_W, FINAL_H)
 	checkScreen.Visible = false
 
@@ -1742,27 +1769,120 @@ function UI.new(options)
 	local ringItems = prep(ringHolder)
 	fade(ringItems, 0)
 
-	local morph = centered(canvas, MORPH_W, MORPH_H)
+	local morph = centered(canvas, NOTIF_W, 62)
 	morph.Visible = false
 
-	local morphBadge = frame(morph, 16, (MORPH_H - 36) / 2, 36, 36, "accent", 0.86)
-	round(morphBadge, 18, "accent")
-	morphBadge.UIStroke.Transparency = 0.6
-	ring(morphBadge, 18, 2, "muted", 0.75)
-	local miniArc, miniArcStroke = ring(morphBadge, 18, 2, "accent", 0)
-	comet(miniArcStroke)
-	local miniSpin = TweenService:Create(
-		miniArc,
-		TweenInfo.new(0.8, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
-		{ Rotation = 360 }
-	)
+	-- "Loading Script.." card. It follows NotifStyle: the window shrinks into that notification's shape.
+	local MORPH_TITLE, MORPH_HINT = "Loading Script..", "Can take 1-2s..."
 
-	local morphTitle = text(morph, "Loading Script..", 64, 15, MORPH_W - 78, 18, 13, "text")
-	morphTitle.FontFace = FONT_BOLD
-	text(morph, "Can take 1-2s...", 64, 35, MORPH_W - 78, 18, 12, "muted")
+	local function morphLoader(parent, size, thickness, arcColor, trackColor, trackTransparency)
+		ring(parent, size, thickness, trackColor, trackTransparency)
+		local arc, arcStroke = ring(parent, size, thickness, arcColor, 0)
+		comet(arcStroke)
+		return TweenService:Create(
+			arc,
+			TweenInfo.new(0.8, Enum.EasingStyle.Linear, Enum.EasingDirection.Out, -1),
+			{ Rotation = 360 }
+		)
+	end
 
-	local morphItems = prep(morph)
-	fade(morphItems, 0)
+	local function morphLabel(x, y, w, h, str, size, color, bold)
+		local l = text(morph, str, x, y, w, h, size, color)
+		if bold then
+			l.FontFace = FONT_BOLD
+		end
+		return l
+	end
+
+	local function buildMorph(key)
+		morph:ClearAllChildren()
+
+		local w, h = NOTIF_W, 62
+		local spec = {
+			top = false,
+			radius = 10,
+			bg = C[NOTIF_COLOR],
+			bgTransparency = NOTIF_TRANSPARENCY,
+			border = C.stroke,
+			borderTransparency = 0.35,
+		}
+		local spin
+
+		if key == "2" then
+			-- Pill
+			w, h = 240, 36
+			spec.radius = 18
+			local box = frame(morph, 6, 6, 24, 24)
+			spin = morphLoader(box, 20, 2, "accent", "muted", 0.75)
+			make("TextLabel", {
+				Position = UDim2.new(0, 38, 0, 0),
+				Size = UDim2.new(0, w - 52, 0, h),
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				RichText = true,
+				Text = "<b>Loading script..</b>  <font color=\"#" .. C.muted:ToHex() .. "\">1-2s</font>",
+				TextSize = 13,
+				TextColor3 = "text",
+				TextXAlignment = Enum.TextXAlignment.Left,
+				TextYAlignment = Enum.TextYAlignment.Center,
+				FontFace = FONT,
+			}, morph)
+		elseif key == "3" then
+			-- Island
+			w, h = 260, 52
+			spec.top = true
+			spec.radius = 26
+			spec.bg = Color3.fromRGB(0, 0, 0)
+			spec.bgTransparency = 0.06
+			spec.border = Color3.fromRGB(42, 42, 48)
+			local badge = frame(morph, 10, 10, 32, 32, "accent", 0.86)
+			round(badge, 16, "accent")
+			badge.UIStroke.Transparency = 0.6
+			spin = morphLoader(badge, 16, 2, "accent", "muted", 0.75)
+			morphLabel(54, 9, w - 70, 16, MORPH_TITLE, 13, Color3.fromRGB(244, 244, 245), true)
+			morphLabel(54, 27, w - 70, 14, MORPH_HINT, 12, Color3.fromRGB(154, 154, 162))
+		elseif key == "4" then
+			-- Ring
+			h = 60
+			local box = frame(morph, 10, 10, 40, 40)
+			spin = morphLoader(box, 34, 3, "accent", "muted", 0.75)
+			morphLabel(62, 11, w - 76, 18, MORPH_TITLE, 13, "text", true)
+			morphLabel(62, 31, w - 76, 16, MORPH_HINT, 12, "muted")
+		elseif key == "5" then
+			-- Solid
+			h = 58
+			local accent = C.accent
+			local onColor = contrastOn(accent)
+			spec.bg = accent
+			spec.bgTransparency = 0.04
+			spec.borderTransparency = 1
+			local box = frame(morph, 14, (h - 22) / 2, 22, 22)
+			spin = morphLoader(box, 20, 3, onColor, onColor, 0.75)
+			morphLabel(48, 10, w - 62, 18, MORPH_TITLE, 13, onColor, true)
+			morphLabel(48, 30, w - 62, 16, MORPH_HINT, 12, onColor:Lerp(accent, 0.35))
+		else
+			-- Stripe
+			round(frame(morph, 8, 10, 3, h - 20, "accent", 0), 2)
+			morphLabel(22, 11, w - 36, 18, MORPH_TITLE, 13, "text", true)
+			morphLabel(22, 30, w - 36, 16, MORPH_HINT, 12, "muted")
+			local trackW = w - 44
+			round(frame(morph, 22, h - 9, trackW, 2, "accent", 0.8), 1)
+			local fill = frame(morph, 22, h - 9, 0, 2, "accent", 0)
+			round(fill, 1)
+			spin = TweenService:Create(
+				fill,
+				TweenInfo.new(2.2, Enum.EasingStyle.Linear),
+				{ Size = UDim2.new(0, trackW, 0, 2) }
+			)
+		end
+
+		morph.Size = UDim2.new(0, w, 0, h)
+		local items = prep(morph)
+		fade(items, 0)
+
+		spec.w, spec.h, spec.spin, spec.items = w, h, spin, items
+		return spec
+	end
 
 	local content = centered(canvas, FINAL_W, FINAL_H)
 	content.Visible = false
@@ -2596,23 +2716,31 @@ function UI.new(options)
 		tween(checkText, 0.2, { TextTransparency = 1 })
 		task.wait(0.2)
 		checkScreen.Visible = false
+		local morphSpec = buildMorph(notifs.styleKey())
 		morph.Visible = true
-		miniSpin:Play()
+		morphSpec.spin:Play()
 		Blur.acquire()
 
 		local vp = root.AbsoluteSize
-		local targetX = vp.X - 16 - MORPH_W / 2
-		local targetY = vp.Y - 16 - MORPH_H / 2
+		local targetX, targetY
+		if morphSpec.top then
+			targetX = vp.X / 2
+			targetY = 12 + morphSpec.h / 2
+		else
+			targetX = vp.X - 16 - morphSpec.w / 2
+			targetY = vp.Y - 16 - morphSpec.h / 2
+		end
 		tween(main, 0.7, {
-			Size = UDim2.new(0, MORPH_W, 0, MORPH_H),
+			Size = UDim2.new(0, morphSpec.w, 0, morphSpec.h),
 			Position = UDim2.new(0, targetX, 0, targetY),
 		}, Enum.EasingStyle.Quart, Enum.EasingDirection.InOut)
-		tween(canvas, 0.7, { BackgroundColor3 = C[NOTIF_COLOR], BackgroundTransparency = NOTIF_TRANSPARENCY })
+		tween(canvas, 0.7, { BackgroundColor3 = morphSpec.bg, BackgroundTransparency = morphSpec.bgTransparency })
+		tween(canvasCorner, 0.7, { CornerRadius = UDim.new(0, morphSpec.radius) })
 		tween(decorGroup, 0.4, { GroupTransparency = 1 })
 		tween(shadow, 0.5, { ImageTransparency = 1 })
-		tween(borderStroke, 0.5, { Transparency = 0.35, Color = C.stroke })
+		tween(borderStroke, 0.5, { Transparency = morphSpec.borderTransparency, Color = morphSpec.border })
 		task.delay(0.35, function()
-			fade(morphItems, 1, 0.3)
+			fade(morphSpec.items, 1, 0.3)
 		end)
 		task.wait(0.75)
 
@@ -2642,9 +2770,9 @@ function UI.new(options)
 		end)
 		task.wait(0.3)
 
-		miniSpin:Cancel()
+		morphSpec.spin:Cancel()
 		Blur.release()
-		fade(morphItems, 0, 0.25)
+		fade(morphSpec.items, 0, 0.25)
 		tween(canvas, 0.3, { BackgroundTransparency = 1 })
 		tween(borderStroke, 0.3, { Transparency = 1 })
 		task.wait(0.35)
