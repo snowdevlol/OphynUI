@@ -420,6 +420,7 @@ local Variables = import("variables")
 local Jnkie = import("utilities/jnkie")
 local Platoboost = import("utilities/platoboost")
 local Panda = import("utilities/panda")
+local Dialog = import("components/window/dialog")
 
 local FONT = Font.new(Images.FONT, Enum.FontWeight.Regular, Enum.FontStyle.Normal)
 local FONT_BOLD = Font.new(Images.FONT, Enum.FontWeight.Bold, Enum.FontStyle.Normal)
@@ -1175,6 +1176,13 @@ function UI.new(options)
 	local KEY_URL = tostring(KEY_CFG.URL or "")
 	local KEY_SAVE = asBool(KEY_CFG.SaveKey, false)
 
+	-- Links usados pelos botões (Get a key / Discord / Website)
+	local LINKS = {
+		getKey = KEY_URL,
+		website = WEBSITE_URL,
+		discord = INVITE_URL,
+	}
+
 	local function isCallable(v)
 		if type(v) == "function" then
 			return true
@@ -1191,6 +1199,42 @@ function UI.new(options)
 		KEY_LIST = KEY_LIST:Validator()
 	end
 	local KEY_JNKIE = type(KEY_LIST) == "table" and KEY_LIST.__isJnkie and KEY_LIST.__instance or nil
+
+	-- Retorna valid (boolean) e reason (string quando inválida).
+	-- Erros aqui são pegos pelo pcall do runKeyCheck ("Something went wrong").
+	local function validateKey(key)
+		local reason
+
+		-- Key = { "a", "b" } | "a" | function(key) | Jnkie:Validator()
+		if KEY_LIST ~= nil then
+			if isCallable(KEY_LIST) then
+				local valid, why = KEY_LIST(key)
+				if valid then
+					return true
+				end
+				reason = why
+			elseif type(KEY_LIST) == "table" then
+				for _, k in ipairs(KEY_LIST) do
+					if tostring(k) == key then
+						return true
+					end
+				end
+			elseif tostring(KEY_LIST) == key then
+				return true
+			end
+		end
+
+		-- KeySystem.API (Platoboost / Panda / Jnkie)
+		for _, service in ipairs(API_SERVICES) do
+			local ok, valid, why = pcall(service.CheckKey, service, key)
+			if ok and valid then
+				return true
+			end
+			reason = (ok and why) or (not ok and tostring(valid)) or reason
+		end
+
+		return false, reason
+	end
 
 	local function safeIsFile(path)
 		if not isfile then
@@ -1607,6 +1651,22 @@ function UI.new(options)
 	end
 
 
+	-- Avatar + "Welcome Back / <nome>!"
+	local avatar = make("ImageLabel", {
+		Position = UDim2.new(0, 22, 0, 214),
+		Size = UDim2.new(0, 32, 0, 32),
+		BackgroundColor3 = "input",
+		BorderSizePixel = 0,
+		Image = player and ("rbxthumb://type=AvatarHeadShot&id=" .. player.UserId .. "&w=150&h=150") or "",
+		ScaleType = Enum.ScaleType.Crop,
+	}, left)
+	round(avatar, 16, "stroke")
+
+	text(left, "Welcome Back", 62, 215, 188, 14, 11, "muted")
+	local welcomeName = text(left, ((player and player.DisplayName) or "User") .. "!", 62, 229, 188, 16, 14, "text")
+	welcomeName.FontFace = FONT_BOLD
+	welcomeName.TextTruncate = Enum.TextTruncate.AtEnd
+
 	frame(content, 272, 20, 1, 220, "stroke", 0)
 
 	local right = frame(content, 273, 0, 187, 260)
@@ -1767,7 +1827,29 @@ function UI.new(options)
 	fade(spinnerItems, 0)
 	fade(contentItems, 0)
 
-	local SUPPORTED_GAMES = {}
+	local SUPPORTED_GAMES = {} -- [PlaceId] = true
+
+	task.spawn(function()
+		local ok, info = pcall(function()
+			return MarketplaceService:GetProductInfo(game.PlaceId)
+		end)
+		if state.closing then
+			return
+		end
+		gameName.Text = (ok and type(info) == "table" and info.Name) or "Unknown game"
+
+		if game.GameId ~= 0 then
+			gameImg.Image = "rbxthumb://type=GameIcon&id=" .. game.GameId .. "&w=150&h=150"
+		end
+
+		if SUPPORTED_GAMES[game.PlaceId] then
+			gameStatus.Text = "Supported"
+			setRole(gameStatus, "TextColor3", "success")
+		else
+			gameStatus.Text = "Not in our list"
+			setRole(gameStatus, "TextColor3", "muted")
+		end
+	end)
 
 	local function detectExecutor()
 		local ok, name = pcall(function()
@@ -2367,6 +2449,95 @@ function UI.new(options)
 		runKeyCheck(key)
 	end)
 
+	-- Fechar a UI (X -> popup "Close Key System?" -> Close)
+	local dialog
+
+	closeGui = function()
+		if state.closing then
+			return
+		end
+		state.closing = true
+		state.ready = false
+		state.popupOpen = false
+		notifs.dismissAll()
+
+		tintTo(closeIcon, C.muted)
+		tween(closeBtn, 0.15, { BackgroundTransparency = 1 })
+
+		fade(dialog.items, 0, 0.15)
+		fadeContent(0, 0.2)
+
+		task.wait(0.2)
+		dialog.popup.Visible = false
+		content.Visible = false
+
+		introLogo.Position = UDim2.new(0.5, 0, 0.5, 0)
+		tween(introLogo, 0.4, { ImageTransparency = 0 })
+		tween(borderStroke, 0.5, { Transparency = 0.55 })
+		tween(main, 0.65, { Size = UDim2.new(0, INTRO_SIZE, 0, INTRO_SIZE) }, Enum.EasingStyle.Quart, Enum.EasingDirection.InOut)
+		task.wait(0.7)
+
+		tween(canvas, 0.35, { BackgroundTransparency = 1 })
+		tween(decorGroup, 0.35, { GroupTransparency = 1 })
+		tween(introLogo, 0.35, { ImageTransparency = 1 })
+		tween(borderStroke, 0.35, { Transparency = 1 })
+		tween(shadow, 0.35, { ImageTransparency = 1 })
+		task.wait(0.4)
+		root:Destroy()
+	end
+
+	dialog = Dialog.new(ctx, {
+		onOpen = function()
+			tintTo(closeIcon, C.muted)
+			tween(closeBtn, 0.15, { BackgroundTransparency = 1 })
+		end,
+		onConfirm = function()
+			task.spawn(closeGui)
+		end,
+	})
+
+	closeBtn.MouseButton1Click:Connect(function()
+		if checkingKey then
+			return
+		end
+		dialog.show()
+	end)
+
+	-- Hovers
+	closeBtn.MouseEnter:Connect(function()
+		if not state.ready or state.closing or state.popupOpen then
+			return
+		end
+		tween(closeBtn, 0.15, { BackgroundTransparency = 0 })
+		tintTo(closeIcon, C.text)
+	end)
+	closeBtn.MouseLeave:Connect(function()
+		if not state.ready or state.closing or state.popupOpen then
+			return
+		end
+		tween(closeBtn, 0.15, { BackgroundTransparency = 1 })
+		tintTo(closeIcon, C.muted)
+	end)
+	moonBtn.MouseEnter:Connect(function()
+		if not state.ready or state.closing then
+			return
+		end
+		tween(moonBtn, 0.15, { BackgroundTransparency = 0 })
+		tintTo(moonIcon, C.text)
+	end)
+	moonBtn.MouseLeave:Connect(function()
+		tween(moonBtn, 0.15, { BackgroundTransparency = 1 })
+		tintTo(moonIcon, C.muted)
+	end)
+	getKey.MouseEnter:Connect(function()
+		tween(getKey, 0.15, { BackgroundColor3 = C.btn2Hover })
+		tween(getKeyIcon, 0.18, { Position = UDim2.new(0, -2, 0, 9) })
+	end)
+	getKey.MouseLeave:Connect(function()
+		tween(getKey, 0.15, { BackgroundColor3 = C.btn2 })
+		tween(getKeyIcon, 0.18, { Position = UDim2.new(0, -12, 0, 9) })
+	end)
+
 	local THEME_ANIM_TIME = 1.6
 	local switchingTheme = false
 
@@ -2621,20 +2792,8 @@ return Jnkie
 end
 
 __modules["utilities/panda"] = function()
--- PandaAuth (Panda Development) adapter for Ophyn.
---
---   KeySystem = {
---       API = {
---           { Type = "panda", ServiceId = "YOUR_SERVICE_ID" },
---       },
---   }
---
--- Uses Panda's official Roblox SDK (PUSL-V4), downloaded from Panda's server
--- the first time it is needed. Docs: https://pandauth.com/docs/for-developers/pusl-v4
-
 local LIB_URL = "https://secure.pandauth.com/pv4/lib"
 
--- Reasons returned by PUSL.validateEx, turned into messages for the UI
 local REASONS = {
 	INVALID_KEY = "key is invalid or expired.",
 	RATE_LIMITED = "you are being rate limited, please wait a moment and try again.",
@@ -2667,7 +2826,6 @@ function Panda.new(config)
 	return self
 end
 
--- Downloads and configures the Panda SDK once. Returns the library, or nil + reason.
 function Panda:_load()
 	while self.loading do
 		task.wait(0.1)
@@ -2720,7 +2878,6 @@ function Panda:_load()
 	return nil, err
 end
 
--- Returns valid (boolean), reason (string when invalid)
 function Panda:CheckKey(key)
 	key = tostring(key or ""):match("^%s*(.-)%s*$")
 	if key == "" then
@@ -2743,7 +2900,6 @@ function Panda:CheckKey(key)
 		return false, REASONS[reason] or ("Panda error: " .. tostring(reason))
 	end
 
-	-- older versions of the SDK only have validate()
 	local ok, result = pcall(lib.validate, key)
 	if not ok then
 		return false, tostring(result)
@@ -2755,7 +2911,6 @@ function Panda:CheckKey(key)
 	return false, REASONS[reason] or tostring(reason or "key is invalid.")
 end
 
--- Returns link, or nil + reason
 function Panda:GetKeyLink()
 	local lib, err = self:_load()
 	if not lib then
@@ -2775,20 +2930,6 @@ return Panda
 end
 
 __modules["utilities/platoboost"] = function()
--- Platoboost adapter for Ophyn.
---
---   KeySystem = {
---       API = {
---           {
---               Type = "platoboost",
---               ServiceId = 1234,               -- your Platoboost service id
---               Secret = "platoboost-secret",   -- your Platoboost secret
---           },
---       },
---   }
---
--- Based on Platoboost's official Lua library. The SHA-256 below is copied
--- from it unchanged; the requests use HttpService for JSON.
 
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
@@ -3133,8 +3274,8 @@ return {
 
 	-- Script Execution
 	Execute = "",
-	Callback = function(key) -- coloque seu script aqui (também aceita string com o código)
-		-- seu script
+	Callback = function(key) -- roda depois do Execute; recebe a key digitada
+		-- ...
 	end,
 }
 end
