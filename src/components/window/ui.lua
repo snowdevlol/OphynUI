@@ -10,7 +10,6 @@ local Variables = import("variables")
 local Jnkie = import("utilities/jnkie")
 local Platoboost = import("utilities/platoboost")
 local Panda = import("utilities/panda")
-local Dialog = import("components/window/dialog")
 
 local FONT = Font.new(Images.FONT, Enum.FontWeight.Regular, Enum.FontStyle.Normal)
 local FONT_BOLD = Font.new(Images.FONT, Enum.FontWeight.Bold, Enum.FontStyle.Normal)
@@ -481,6 +480,7 @@ local function icon(parent, x, y, color, image)
 		ZIndex = 0,
 	}, holder)
 	make("ImageLabel", {
+		Name = "iconimage",
 		Size = UDim2.new(1, 0, 1, 0),
 		BackgroundTransparency = 1,
 		Image = image,
@@ -632,6 +632,27 @@ end
 local UI = {}
 UI.Jnkie = Jnkie
 
+-- Get key button customisation (KeySystem:SetGetkeyTitle / :SetGetkeyIcon).
+-- Stored here so it works before or after KeySystem.new, and updates a UI that is already open.
+local getkeySettings = { title = nil, icon = nil }
+local getkeyAppliers = {}
+
+local function applyGetkeyAll()
+	for _, apply in ipairs(getkeyAppliers) do
+		apply()
+	end
+end
+
+function UI.SetGetkeyTitle(title)
+	getkeySettings.title = title ~= nil and tostring(title) or nil
+	applyGetkeyAll()
+end
+
+function UI.SetGetkeyIcon(icon)
+	getkeySettings.icon = icon
+	applyGetkeyAll()
+end
+
 function UI.new(options)
 	local cfg = {}
 	for k, v in pairs(Variables) do
@@ -685,9 +706,24 @@ function UI.new(options)
 	-- card = whether each card shows up at all, separate from whether a link is set.
 	-- Discord and Information default to shown; Website defaults to whatever HAS_WEBSITE
 	-- is (most people don't have one, so it stays hidden unless a link is actually given).
-	local SHOW_DISCORD_CARD = asBool(cfg.discord, true)
-	local SHOW_WEBSITE_CARD = asBool(cfg.website, HAS_WEBSITE)
-	local SHOW_INFO_CARD = asBool(cfg.information, true)
+	-- What the person passes to KeySystem.new wins over the defaults in variables.lua.
+	-- Accepts Discord/Website (or lowercase) as true/false or "true"/"false".
+	local function cardFlag(default, ...)
+		for _, source in ipairs({ options or {}, Variables }) do
+			for _, key in ipairs({ ... }) do
+				if source[key] ~= nil then
+					return asBool(source[key], default)
+				end
+			end
+		end
+		return default
+	end
+
+	local SHOW_DISCORD_CARD = cardFlag(true, "Discord", "discord")
+	local SHOW_WEBSITE_CARD = cardFlag(HAS_WEBSITE, "Website", "website")
+	local SHOW_INFO_CARD = cardFlag(true, "Information", "information")
+	-- Only Discord enabled (no Website card): it starts expanded to fill the free space
+	local DISCORD_STARTS_OPEN = SHOW_DISCORD_CARD and not SHOW_WEBSITE_CARD and HAS_DISCORD
 
 	local INVITE_DISPLAY, INVITE_URL, INVITE_CODE = "Not Configured", "", ""
 	if HAS_DISCORD then
@@ -935,7 +971,7 @@ function UI.new(options)
 		end
 	end
 
-	local state = { ready = false, popupOpen = false, closing = false }
+	local state = { ready = false, closing = false }
 	local snapLocked = false
 
 	local root = Instance.new("ScreenGui")
@@ -1227,6 +1263,7 @@ function UI.new(options)
 		BorderSizePixel = 0,
 		AutoButtonColor = false,
 		Text = "Get a key",
+		TextTruncate = Enum.TextTruncate.AtEnd,
 		TextSize = 13,
 		TextColor3 = "text",
 		FontFace = FONT,
@@ -1234,6 +1271,23 @@ function UI.new(options)
 	round(getKey, 8, "stroke")
 	make("UIPadding", { PaddingLeft = UDim.new(0, 24) }, getKey)
 	local getKeyIcon = icon(getKey, -12, 9, "text", Images.KEY)
+
+	local function applyGetkey()
+		local title = getkeySettings.title
+		getKey.Text = (title and title ~= "") and title or "Get a key"
+		local image = getKeyIcon:FindFirstChild("iconimage")
+		if image then
+			image.Image = assetId(getkeySettings.icon) or Images.KEY
+		end
+	end
+	applyGetkey()
+	table.insert(getkeyAppliers, applyGetkey)
+	root.Destroying:Connect(function()
+		local index = table.find(getkeyAppliers, applyGetkey)
+		if index then
+			table.remove(getkeyAppliers, index)
+		end
+	end)
 
 	if not SHOW_GETKEY then
 		getKey.Visible = false
@@ -1547,6 +1601,10 @@ function UI.new(options)
 		if discordTitle.Text == target then
 			return
 		end
+		if not state.ready then
+			discordTitle.Text = target
+			return
+		end
 		tween(discordTitle, 0.12, { TextTransparency = 1 })
 		task.delay(0.12, function()
 			if state.closing then
@@ -1722,6 +1780,19 @@ function UI.new(options)
 				end
 			end)
 		end
+	end
+
+	-- Same end state as setDiscord(true), without animation (content is still hidden at launch)
+	if DISCORD_STARTS_OPEN then
+		discordOpen = true
+		discordToken += 1
+		layoutCards(true)
+		discordTitle.Position = UDim2.new(0, 40, 0, 6)
+		discordSub.Position = UDim2.new(0, 40, 0, 21)
+		discordSub.Size = UDim2.new(0, 102, 0, 13)
+		fade(rowsItems, 0)
+		fade(discordIconItems, 0)
+		discordExtra.Visible = true
 	end
 
 	discord.MouseButton1Click:Connect(function()
@@ -1971,24 +2042,6 @@ function UI.new(options)
 
 		local runError
 		task.spawn(function()
-			local code = cfg.Execute
-			if type(code) == "string" and code ~= "" then
-				if not loadstring then
-					runError = "loadstring is not available"
-					return
-				end
-				local fn, compileError = loadstring(code)
-				if not fn then
-					runError = compileError
-					return
-				end
-				local ok, err = pcall(fn)
-				if not ok then
-					runError = err
-					return
-				end
-			end
-
 			local callback = cfg.Callback
 			if type(callback) == "string" and callback ~= "" then
 				if not loadstring then
@@ -2039,26 +2092,21 @@ function UI.new(options)
 		runKeyCheck(key)
 	end)
 
-	-- Fechar a UI (X -> popup "Close Key System?" -> Close)
-	local dialog
-
+	-- Fechar a UI (o X fecha direto, sem popup de confirmação)
 	closeGui = function()
 		if state.closing then
 			return
 		end
 		state.closing = true
 		state.ready = false
-		state.popupOpen = false
 		notifs.dismissAll()
 
 		tintTo(closeIcon, C.muted)
 		tween(closeBtn, 0.15, { BackgroundTransparency = 1 })
 
-		fade(dialog.items, 0, 0.15)
 		fadeContent(0, 0.2)
 
 		task.wait(0.2)
-		dialog.popup.Visible = false
 		content.Visible = false
 
 		introLogo.Position = UDim2.new(0.5, 0, 0.5, 0)
@@ -2076,33 +2124,23 @@ function UI.new(options)
 		root:Destroy()
 	end
 
-	dialog = Dialog.new(ctx, {
-		onOpen = function()
-			tintTo(closeIcon, C.muted)
-			tween(closeBtn, 0.15, { BackgroundTransparency = 1 })
-		end,
-		onConfirm = function()
-			task.spawn(closeGui)
-		end,
-	})
-
 	closeBtn.MouseButton1Click:Connect(function()
-		if checkingKey then
+		if not state.ready or state.closing then
 			return
 		end
-		dialog.show()
+		task.spawn(closeGui)
 	end)
 
 	-- Hovers
 	closeBtn.MouseEnter:Connect(function()
-		if not state.ready or state.closing or state.popupOpen then
+		if not state.ready or state.closing then
 			return
 		end
 		tween(closeBtn, 0.15, { BackgroundTransparency = 0 })
 		tintTo(closeIcon, C.text)
 	end)
 	closeBtn.MouseLeave:Connect(function()
-		if not state.ready or state.closing or state.popupOpen then
+		if not state.ready or state.closing then
 			return
 		end
 		tween(closeBtn, 0.15, { BackgroundTransparency = 1 })
@@ -2132,7 +2170,7 @@ function UI.new(options)
 	local switchingTheme = false
 
 	local function switchTheme()
-		if not state.ready or state.closing or checkingKey or switchingTheme or state.popupOpen then
+		if not state.ready or state.closing or checkingKey or switchingTheme then
 			return
 		end
 		switchingTheme = true
@@ -2220,7 +2258,7 @@ function UI.new(options)
 		end
 
 		content.Visible = true
-		fade(contentItems, 1, 0.45)
+		fadeContent(1, 0.45)
 		task.wait(0.3)
 		state.ready = true
 
@@ -2231,7 +2269,33 @@ function UI.new(options)
 		end
 	end)
 
-	return root
+	-- KeySystem.new(...) returns this object: :SetGetkeyTitle / :SetGetkeyIcon, and everything else
+	-- (Destroy, Enabled, Parent, ...) is forwarded to the ScreenGui.
+	local api = {}
+	function api:SetGetkeyTitle(title)
+		UI.SetGetkeyTitle(title)
+		return self
+	end
+	function api:SetGetkeyIcon(icon)
+		UI.SetGetkeyIcon(icon)
+		return self
+	end
+	api.Gui = root
+
+	return setmetatable(api, {
+		__index = function(_, key)
+			local value = root[key]
+			if type(value) == "function" then
+				return function(_, ...)
+					return value(root, ...)
+				end
+			end
+			return value
+		end,
+		__newindex = function(_, key, value)
+			root[key] = value
+		end,
+	})
 end
 
 return UI
