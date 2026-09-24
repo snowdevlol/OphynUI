@@ -941,13 +941,12 @@ function UI.new(options)
 	end)
 
 	local INTRO_SIZE = tonumber(cfg.startintro_size) or 80
-	local LOADING_TIME = tonumber(cfg.introloading_time) or 3
+	local LOADING_TIME = 3 -- fixed: icons/images preload during this time
 	local SQUARE_TIME = tonumber(cfg.squareintro_time) or 1.2
 
 	settings.tintLogo = asBool(cfg.Changelogocolor, true)
 	settings.tintIcons = asBool(cfg.Changeiconscolor, true)
 	local SHOW_GETKEY = asBool(cfg.getkey, true)
-	local SHOW_INTRO = asBool(cfg.intro, true)
 
 	local themeName = cfg.Theme
 	if not THEMES[themeName] then
@@ -981,6 +980,7 @@ function UI.new(options)
 	local SHOW_WEBSITE_CARD = cardFlag(HAS_WEBSITE, "Website", "website")
 	local SHOW_INFO_CARD = cardFlag(true, "Information", "information")
 	-- Only Discord enabled (no Website card): it starts expanded to fill the free space
+	local SHOW_INTRO = cardFlag(true, "Intro", "intro")
 	local DISCORD_STARTS_OPEN = SHOW_DISCORD_CARD and not SHOW_WEBSITE_CARD and HAS_DISCORD
 
 	local INVITE_DISPLAY, INVITE_URL, INVITE_CODE = "Not Configured", "", ""
@@ -1503,15 +1503,7 @@ function UI.new(options)
 	}, left)
 	round(submit, 8)
 	make("UIPadding", { PaddingLeft = UDim.new(0, 24) }, submit)
-	local submitIcon = icon(submit, -12, 9, "submitText", Images.SUBMIT)
-
-	-- On hover, the icon slides forward over the label, covering the letters it passes
-	submit.MouseEnter:Connect(function()
-		tween(submitIcon, 0.18, { Position = UDim2.new(0, -2, 0, 9) })
-	end)
-	submit.MouseLeave:Connect(function()
-		tween(submitIcon, 0.18, { Position = UDim2.new(0, -12, 0, 9) })
-	end)
+	icon(submit, -12, 9, "submitText", Images.SUBMIT)
 
 	local getKey = make("TextButton", {
 		Name = "TextButton",
@@ -2362,6 +2354,18 @@ function UI.new(options)
 		tintTo(closeIcon, C.muted)
 		tween(closeBtn, 0.15, { BackgroundTransparency = 1 })
 
+		if not SHOW_INTRO then
+			-- No intro: plain fade-out
+			fadeContent(0, 0.3)
+			tween(canvas, 0.35, { BackgroundTransparency = 1 })
+			tween(decorGroup, 0.35, { GroupTransparency = 1 })
+			tween(borderStroke, 0.35, { Transparency = 1 })
+			tween(shadow, 0.35, { ImageTransparency = 1 })
+			task.wait(0.4)
+			root:Destroy()
+			return
+		end
+
 		fadeContent(0, 0.2)
 
 		task.wait(0.2)
@@ -2414,14 +2418,6 @@ function UI.new(options)
 	moonBtn.MouseLeave:Connect(function()
 		tween(moonBtn, 0.15, { BackgroundTransparency = 1 })
 		tintTo(moonIcon, C.muted)
-	end)
-	getKey.MouseEnter:Connect(function()
-		tween(getKey, 0.15, { BackgroundColor3 = C.btn2Hover })
-		tween(getKeyIcon, 0.18, { Position = UDim2.new(0, -2, 0, 9) })
-	end)
-	getKey.MouseLeave:Connect(function()
-		tween(getKey, 0.15, { BackgroundColor3 = C.btn2 })
-		tween(getKeyIcon, 0.18, { Position = UDim2.new(0, -12, 0, 9) })
 	end)
 
 	local THEME_ANIM_TIME = 1.6
@@ -3169,11 +3165,10 @@ return {
 
 	-- Buttons Config
 	getkey = true,
-	shopbt = "", 
 
 	-- Intro Config
+	Intro = "true", -- "false": fade-in on open, fade-out on close
 	startintro_size = 80, -- initial square size
-	introloading_time = 3,
 	squareintro_time = 1.2,
 
 	-- Themes Config
