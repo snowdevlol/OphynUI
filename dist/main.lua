@@ -1385,6 +1385,43 @@ function UI.new(options)
 		end,
 	}
 
+	-- Your own service:
+	-- { Type = "custom", ServiceId = 1234, --[[ any fields you want ]]
+	--   CheckKey = function(key, ctx) return valid, reason end,   -- required
+	--   GetKeyLink = function(ctx) return url end }               -- optional ("Get a key" button)
+	-- ctx = every field of the entry (ServiceId, Secret, ...) + ctx.Request
+	-- (the executor's HTTP function, or nil). GetKeyLink can return nil, "reason" on failure.
+	local function customRequestFunction()
+		return request or http_request or (syn and syn.request) or (http and http.request)
+	end
+
+	SERVICE_BUILDERS.custom = function(entry)
+		local checker = entry.CheckKey or entry.checkKey
+		if type(checker) ~= "function" then
+			error("KeySystem.API custom entry needs a CheckKey function")
+		end
+		local getLink = entry.GetKeyLink or entry.getKeyLink
+
+		-- Built on every call, so the person's own fields can override Request.
+		local function context()
+			local ctx = { Request = customRequestFunction() }
+			for k, v in pairs(entry) do
+				ctx[k] = v
+			end
+			return ctx
+		end
+
+		return {
+			CheckKey = function(_, key)
+				local valid, why = checker(key, context())
+				return valid == true, why
+			end,
+			GetKeyLink = (type(getLink) == "function") and function()
+				return getLink(context())
+			end or nil,
+		}
+	end
+
 	SERVICE_BUILDERS.pandaauth = SERVICE_BUILDERS.panda -- alias
 
 	local apiEntries = type(KEY_CFG.API) == "table" and KEY_CFG.API or {}
