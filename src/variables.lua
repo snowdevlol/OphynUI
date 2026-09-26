@@ -13,6 +13,7 @@ return {
 	Intro = "true", -- "false": fade-in on open, fade-out on close
 	startintro_size = 80, -- initial square size
 	squareintro_time = 1.2,
+	squarecontorn = "true", -- "false": removes the outline around the intro square
 
 	-- Themes Config
 	Changelogocolor = true,
@@ -25,6 +26,7 @@ return {
 	-- Cards ("true" / "false")
 	Discord = "true",
 	Website = "false",
+	Informations = "true",
 
 	-- Notification style
 	NotifStyle = "1",
