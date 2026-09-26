@@ -392,12 +392,98 @@ local COLOR_PROPS = {
 local bindings = {}
 local gradients = {}
 
+-- UI/Title font (Ophyn:SetUIFont / Ophyn:SetTitleFont). Every label built through make()
+-- with FontFace = FONT or FONT_BOLD is tracked here so both setters can restyle text that
+-- already exists, not just text built afterwards.
+local fontBindings = {}
+local fontSettings = { ui = nil, title = nil }
+
+local function fontFor(entryFont)
+	if entryFont.title and fontSettings.title then
+		local t = fontSettings.title
+		if entryFont.bold then
+			return Font.new(t.Family, Enum.FontWeight.Bold, t.Style)
+		end
+		return t
+	end
+	if fontSettings.ui then
+		local u = fontSettings.ui
+		if entryFont.bold then
+			return Font.new(u.Family, Enum.FontWeight.Bold, u.Style)
+		end
+		return u
+	end
+	return entryFont.bold and FONT_BOLD or FONT
+end
+
+local function applyFontAll()
+	for _, entryFont in ipairs(fontBindings) do
+		if entryFont.inst.Parent then
+			entryFont.inst.FontFace = fontFor(entryFont)
+		end
+	end
+end
+
+-- Marks an already-created label as the window title, so SetTitleFont targets only it
+-- (SetUIFont still applies to it too, as a fallback, same as everything else).
+local function markTitleFont(inst)
+	for _, entryFont in ipairs(fontBindings) do
+		if entryFont.inst == inst then
+			entryFont.title = true
+			inst.FontFace = fontFor(entryFont)
+			return
+		end
+	end
+end
+
+-- Same idea for a bold label created via text() then switched to FONT_BOLD afterwards,
+-- so SetUIFont/SetTitleFont don't flatten it back to the regular weight later.
+local function markBoldFont(inst)
+	for _, entryFont in ipairs(fontBindings) do
+		if entryFont.inst == inst then
+			entryFont.bold = true
+			inst.FontFace = fontFor(entryFont)
+			return
+		end
+	end
+end
+
+-- Accepts a Font instance, a Roblox Enum.Font name ("Gotham", "SourceSansBold", ...), a
+-- custom font family asset ("rbxassetid://..." or a bare numeric id), or a table
+-- { Family = ..., Weight = ..., Style = ... }.
+local function resolveFont(input)
+	if input == nil then
+		return nil
+	end
+	if typeof(input) == "Font" then
+		return input
+	end
+	if type(input) == "table" then
+		return Font.new(input.Family or input.family, input.Weight or Enum.FontWeight.Regular, input.Style or Enum.FontStyle.Normal)
+	end
+	local name = tostring(input)
+	local ok, enumFont = pcall(function()
+		return Enum.Font[name]
+	end)
+	if ok and typeof(enumFont) == "EnumItem" then
+		return Font.fromEnum(enumFont)
+	end
+	local family = name
+	if family:match("^%d+$") then
+		family = "rbxassetid://" .. family
+	end
+	return Font.new(family, Enum.FontWeight.Regular, Enum.FontStyle.Normal)
+end
+
 local function make(class, props, parent)
 	local inst = Instance.new(class)
 	for k, v in pairs(props) do
 		if type(v) == "string" and COLOR_PROPS[k] then
 			bindings[#bindings + 1] = { inst, k, v }
 			inst[k] = C[v]
+		elseif k == "FontFace" and (v == FONT or v == FONT_BOLD) then
+			fontBindings[#fontBindings + 1] = { inst = inst, bold = (v == FONT_BOLD), title = false }
+			inst[k] = v
 		else
 			inst[k] = v
 		end
@@ -643,6 +729,33 @@ local function applyGetkeyAll()
 	end
 end
 
+-- Get key dropdown (KeySystem:GetMethod). Each call adds one option:
+-- Ophyn:GetMethod({ Title = "...", Icon = "rbxassetid://...", URL = "..." })
+-- or, for a dynamic link (matches a custom service's GetKeyLink(ctx)):
+-- Ophyn:GetMethod({ Title = "...", Icon = "...", GetKeyLink = function(ctx) return url end })
+-- Once 2+ methods are registered, the get key button grows an arrow that opens a dropdown
+-- to pick between them; picking one only changes the button's text/icon (SetGetkeyTitle
+-- keeps working as the fallback label when no method is selected yet).
+local getMethods = {}
+local selectedMethodIndex = nil
+
+function UI.GetMethod(entry)
+	entry = entry or {}
+	local method = {
+		title = entry.Title ~= nil and tostring(entry.Title) or nil,
+		icon = entry.Icon,
+		url = entry.URL,
+		getKeyLink = entry.GetKeyLink or entry.getKeyLink,
+		fields = entry, -- extra custom fields, passed back as ctx to GetKeyLink
+	}
+	table.insert(getMethods, method)
+	if not selectedMethodIndex then
+		selectedMethodIndex = 1
+	end
+	applyGetkeyAll()
+	return #getMethods
+end
+
 -- Readable icon/text color on top of a filled color
 local function contrastOn(color)
 	local luminance = 0.299 * color.R + 0.587 * color.G + 0.114 * color.B
@@ -654,6 +767,16 @@ local notifSettings = { style = nil }
 
 function UI.SetNotifStyle(style)
 	notifSettings.style = style ~= nil and tostring(style) or nil
+end
+
+function UI.SetUIFont(font)
+	fontSettings.ui = resolveFont(font)
+	applyFontAll()
+end
+
+function UI.SetTitleFont(font)
+	fontSettings.title = resolveFont(font)
+	applyFontAll()
 end
 
 function UI.SetGetkeyTitle(title)
@@ -1214,7 +1337,7 @@ function UI.new(options)
 	fxLayer.ZIndex = 3
 
 	local checkText = text(checkScreen, "Correct Key!", 0, 156, FINAL_W, 22, 16, "text", Enum.TextXAlignment.Center)
-	checkText.FontFace = FONT_BOLD
+	markBoldFont(checkText)
 	checkText.TextTransparency = 1
 
 	local ringItems = prep(ringHolder)
@@ -1240,7 +1363,7 @@ function UI.new(options)
 	local function morphLabel(x, y, w, h, str, size, color, bold)
 		local l = text(morph, str, x, y, w, h, size, color)
 		if bold then
-			l.FontFace = FONT_BOLD
+			markBoldFont(l)
 		end
 		return l
 	end
@@ -1350,6 +1473,7 @@ function UI.new(options)
 	}, left)
 
 	local hubTitle = text(left, HUB_NAME, 66, 20, 190, 22, 20, "text")
+markTitleFont(hubTitle)
 	hubTitle.TextTruncate = Enum.TextTruncate.AtEnd
 	local hubSubtitle = text(left, HUB_SUBTITLE, 66, 42, 190, 14, 12, "muted")
 	hubSubtitle.TextTruncate = Enum.TextTruncate.AtEnd
@@ -1418,15 +1542,102 @@ function UI.new(options)
 		FontFace = FONT,
 	}, left)
 	round(getKey, 8, "stroke")
-	make("UIPadding", { PaddingLeft = UDim.new(0, 24) }, getKey)
+	local getKeyPadding = make("UIPadding", { PaddingLeft = UDim.new(0, 24) }, getKey)
 	local getKeyIcon = icon(getKey, -12, 9, "text", Images.KEY)
 
+	-- Dropdown arrow: a separate hit area over the button's right edge, only visible
+	-- once there are 2+ methods (see Ophyn:GetMethod above). Being its own TextButton on
+	-- top of "getKey" means clicking it never also fires getKey's own click below.
+	local methodArrow = make("TextButton", {
+		Name = "TextButton",
+		Position = UDim2.new(1, -26, 0, 0),
+		Size = UDim2.new(0, 26, 1, 0),
+		BackgroundTransparency = 1,
+		AutoButtonColor = false,
+		Text = "\226\150\190", -- U+25BE, small down-pointing triangle
+		TextSize = 11,
+		TextColor3 = "text",
+		FontFace = FONT,
+		Visible = false,
+	}, getKey)
+
+	-- Dropdown list, parented to "main" (not "canvas") so it isn't clipped by the
+	-- window's edges when it opens above/below the button.
+	local methodDropdown = make("Frame", {
+		Name = "GetKeyDropdown",
+		BackgroundColor3 = "card",
+		BorderSizePixel = 0,
+		Visible = false,
+		ZIndex = 50,
+		ClipsDescendants = true,
+	}, main)
+	round(methodDropdown, 8, "stroke")
+
+	local function closeMethodDropdown()
+		methodDropdown.Visible = false
+	end
+
+	local function rebuildMethodDropdown()
+		for _, child in ipairs(methodDropdown:GetChildren()) do
+			if child:IsA("GuiObject") then
+				child:Destroy()
+			end
+		end
+		local rowH = 32
+		for i, m in ipairs(getMethods) do
+			local row = make("TextButton", {
+				Name = "TextButton",
+				Position = UDim2.new(0, 0, 0, (i - 1) * rowH),
+				Size = UDim2.new(1, 0, 0, rowH),
+				BackgroundTransparency = 1,
+				AutoButtonColor = false,
+				Text = "",
+				ZIndex = 51,
+			}, methodDropdown)
+			icon(row, 10, 8, "text", assetId(m.icon) or Images.KEY)
+			local label = text(row, m.title or ("Method " .. i), 34, 0, 96, rowH, 12, "text")
+			label.ZIndex = 52
+			row.MouseButton1Click:Connect(function()
+				selectedMethodIndex = i
+				applyGetkeyAll()
+				closeMethodDropdown()
+			end)
+		end
+		methodDropdown.Size = UDim2.new(0, 140, 0, rowH * math.max(#getMethods, 1))
+	end
+
+	methodArrow.MouseButton1Click:Connect(function()
+		if not state.ready or state.closing or #getMethods < 2 then
+			return
+		end
+		if methodDropdown.Visible then
+			closeMethodDropdown()
+			return
+		end
+		rebuildMethodDropdown()
+		local pos = getKey.AbsolutePosition - main.AbsolutePosition
+		local h = methodDropdown.AbsoluteSize.Y
+		methodDropdown.Position = UDim2.new(0, pos.X, 0, pos.Y - h - 6) -- opens upward
+		methodDropdown.Visible = true
+	end)
+
 	local function applyGetkey()
-		local title = getkeySettings.title
+		local method = getMethods[selectedMethodIndex or 0]
+		local title = method and method.title
+		local iconValue = method and method.icon
+		if not title or title == "" then
+			title = getkeySettings.title
+		end
 		getKey.Text = (title and title ~= "") and title or "Get a key"
 		local image = getKeyIcon:FindFirstChild("iconimage")
 		if image then
-			image.Image = assetId(getkeySettings.icon) or Images.KEY
+			image.Image = assetId(iconValue) or assetId(getkeySettings.icon) or Images.KEY
+		end
+		local showArrow = #getMethods > 1
+		methodArrow.Visible = showArrow
+		getKeyPadding.PaddingRight = showArrow and UDim.new(0, 20) or UDim.new(0, 0)
+		if not showArrow then
+			closeMethodDropdown()
 		end
 	end
 	applyGetkey()
@@ -1457,7 +1668,7 @@ function UI.new(options)
 
 	text(left, "Welcome Back", 62, 215, 188, 14, 11, "muted")
 	local welcomeName = text(left, ((player and player.DisplayName) or "User") .. "!", 62, 229, 188, 16, 14, "text")
-	welcomeName.FontFace = FONT_BOLD
+	markBoldFont(welcomeName)
 	welcomeName.TextTruncate = Enum.TextTruncate.AtEnd
 
 	frame(content, 272, 20, 1, 220, "stroke", 0)
@@ -1547,7 +1758,7 @@ function UI.new(options)
 
 	local function statBlock(x, label, dotColor)
 		local num = text(discordExtra, "...", x, 47, 62, 16, 13, "text")
-		num.FontFace = FONT_BOLD
+		markBoldFont(num)
 		local dot = frame(discordExtra, x, 66, 6, 6, dotColor, 0)
 		make("UICorner", { CornerRadius = UDim.new(1, 0) }, dot)
 		text(discordExtra, label, x + 10, 62, 50, 14, 10, "muted")
@@ -1696,6 +1907,41 @@ function UI.new(options)
 
 	getKey.MouseButton1Click:Connect(function()
 		if not state.ready or state.closing then
+			return
+		end
+
+		if #getMethods > 0 then
+			local method = getMethods[selectedMethodIndex or 1]
+			if not method then
+				return
+			end
+			if method.url and method.url ~= "" then
+				copyLink(method.url, "Key link", "link")
+				return
+			end
+			if type(method.getKeyLink) == "function" then
+				if fetchingKeyLink then
+					return
+				end
+				fetchingKeyLink = true
+				task.spawn(function()
+					local req = request or http_request or (syn and syn.request) or (http and http.request)
+					local ctx = { Request = req }
+					for k, v in pairs(method.fields or {}) do
+						ctx[k] = v
+					end
+					local ok, link, err = pcall(method.getKeyLink, ctx)
+					fetchingKeyLink = false
+					if not state.ready or state.closing then
+						return
+					end
+					if ok and link then
+						copyLink(link, "Key link", "link")
+					else
+						notify("Couldn't get a key", tostring((not ok) and link or err or "Try again."), "warn", "link", 5)
+					end
+				end)
+			end
 			return
 		end
 
@@ -2464,6 +2710,17 @@ function UI.new(options)
 		return self
 	end
 	api.NotifStyle = api.SetNotifStyle
+	function api:GetMethod(entry)
+		return UI.GetMethod(entry)
+	end
+	function api:SetUIFont(font)
+		UI.SetUIFont(font)
+		return self
+	end
+	function api:SetTitleFont(font)
+		UI.SetTitleFont(font)
+		return self
+	end
 	api.Gui = root
 
 	return setmetatable(api, {
