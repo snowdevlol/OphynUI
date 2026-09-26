@@ -11,6 +11,7 @@ function Notification.new(ctx)
 	local tween, prep, fade = ctx.tween, ctx.prep, ctx.fade
 	local root, cfg, Images = ctx.root, ctx.cfg, ctx.images
 	local FONT, FONT_BOLD = ctx.FONT, ctx.FONT_BOLD
+	local markBoldFont = ctx.markBoldFont
 
 	local NOTIF_W = cfg.NOTIF_W
 	local NOTIF_TRANSPARENCY = cfg.NOTIF_TRANSPARENCY
@@ -157,7 +158,10 @@ function Notification.new(ctx)
 	local function label(parent, str, x, y, w, h, size, color, bold)
 		local l = text(parent, str, x, y, w, h, size, color)
 		if bold then
-			l.FontFace = FONT_BOLD
+			-- Route through markBoldFont (not a raw FontFace assign) so this label
+			-- is registered as bold in fontBindings; otherwise the next
+			-- SetUIFont/SetTitleFont call flattens it back to the regular weight.
+			markBoldFont(l)
 		end
 		l.TextTruncate = Enum.TextTruncate.AtEnd
 		return l
