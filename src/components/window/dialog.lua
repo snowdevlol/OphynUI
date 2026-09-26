@@ -1,3 +1,5 @@
+-- was been removed from ui and not working anymore, dont try to add back pls
+
 local Dialog = {}
 
 function Dialog.new(ctx, callbacks)
