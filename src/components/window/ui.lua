@@ -1236,6 +1236,7 @@ function UI.new(options)
 		images = Images,
 		FONT = FONT,
 		FONT_BOLD = FONT_BOLD,
+		markBoldFont = markBoldFont,
 		root = root,
 		canvas = canvas,
 		state = state,
