@@ -1574,6 +1574,7 @@ function UI.new(options)
 	settings.tintLogo = asBool(cfg.Changelogocolor, true)
 	settings.tintIcons = asBool(cfg.Changeiconscolor, true)
 	local SHOW_GETKEY = asBool(cfg.getkey, true)
+	local SHOW_CHANGE_THEME = asBool(cfg.ChangeTheme, true)
 
 	local themeName = cfg.Theme
 	if not THEMES[themeName] then
@@ -2428,7 +2429,7 @@ markTitleFont(hubTitle)
 	text(right, "Detected game", 20, 24, 147, 14, 11, "muted")
 
 	local gameCard = frame(right, 20, 42, 147, 52, "card", 0)
-	round(gameCard, 8, "stroke")
+	round(gameCard, 8)
 
 	local gameImg = make("ImageLabel", {
 		Position = UDim2.new(0, 9, 0, 9),
@@ -2573,6 +2574,7 @@ markTitleFont(hubTitle)
 		ImageColor3 = iconRole("muted"),
 		ZIndex = 6,
 	}, moonBtn)
+	moonBtn.Visible = SHOW_CHANGE_THEME
 
 	local closeGui
 
@@ -4121,6 +4123,7 @@ return {
 	-- Themes Config
 	Changelogocolor = true,
 	Changeiconscolor = true,
+	ChangeTheme = true, -- false: hides the moon (theme switch) icon
 
 	-- Section Config
 	discord_link = "",
