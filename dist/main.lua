@@ -4175,6 +4175,18 @@ function KeySystem.GetMethod(a, b)
 	return import("components/window/ui").GetMethod(firstArg(a, b))
 end
 
+-- Works as KeySystem:SetUIFont("...") / KeySystem.SetUIFont("...")
+function KeySystem.SetUIFont(a, b)
+	import("components/window/ui").SetUIFont(firstArg(a, b))
+	return KeySystem
+end
+
+-- Works as KeySystem:SetTitleFont("...") / KeySystem.SetTitleFont("...")
+function KeySystem.SetTitleFont(a, b)
+	import("components/window/ui").SetTitleFont(firstArg(a, b))
+	return KeySystem
+end
+
 KeySystem.Jnkie = import("utilities/jnkie")
 
 return KeySystem
