@@ -60,6 +60,12 @@ end
 
 KeySystem.NotifStyle = KeySystem.SetNotifStyle
 
+-- Works as KeySystem:GetMethod({...}) / KeySystem.GetMethod({...}), same as the
+-- other Set* helpers above: usable standalone, before KeySystem.new(...) exists.
+function KeySystem.GetMethod(a, b)
+\treturn import("__ENTRY__").GetMethod(firstArg(a, b))
+end
+
 KeySystem.Jnkie = import("utilities/jnkie")
 
 return KeySystem
