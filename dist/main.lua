@@ -19,6 +19,158 @@ __modules["components/nothing.com/yeahnothing"] = function()
 
 end
 
+__modules["components/window/dialog"] = function()
+local Dialog = {}
+
+function Dialog.new(ctx, callbacks)
+	callbacks = callbacks or {}
+
+	local C = ctx.C
+	local make, frame, text, round = ctx.make, ctx.frame, ctx.text, ctx.round
+	local tween, prep, fade = ctx.tween, ctx.prep, ctx.fade
+	local state, Images, FONT_BOLD = ctx.state, ctx.images, ctx.FONT_BOLD
+
+	local popup = make("Frame", {
+		Size = UDim2.new(1, 0, 1, 0),
+		BackgroundTransparency = 1,
+		BorderSizePixel = 0,
+		ZIndex = 10,
+		Visible = false,
+	}, ctx.canvas)
+
+	local dim = make("TextButton", {
+		Size = UDim2.new(1, 0, 1, 0),
+		BackgroundColor3 = Color3.fromRGB(0, 0, 0),
+		BackgroundTransparency = 0.4,
+		BorderSizePixel = 0,
+		AutoButtonColor = false,
+		Text = "",
+	}, popup)
+	make("UICorner", { CornerRadius = UDim.new(0, 10) }, dim)
+
+	local popupCard = make("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		Size = UDim2.new(0, 270, 0, 132),
+		BackgroundColor3 = "card",
+		BorderSizePixel = 0,
+	}, popup)
+	round(popupCard, 12, "stroke")
+
+	local badge = frame(popupCard, 22, 20, 32, 32, "input", 0)
+	round(badge, 16, "stroke")
+	make("ImageLabel", {
+		AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.new(0.5, 0, 0.5, 0),
+		Size = UDim2.new(0, 12, 0, 12),
+		BackgroundTransparency = 1,
+		Image = Images.CLOSE_ICON,
+		ImageColor3 = ctx.tintIcons and "accent" or Color3.fromRGB(255, 255, 255),
+	}, badge)
+
+	local popupTitle = text(popupCard, "Close Key System?", 66, 19, 182, 16, 14, "text")
+	popupTitle.FontFace = FONT_BOLD
+	local popupDesc = text(popupCard, "Are you sure you want to close the Key System?", 66, 38, 182, 30, 12, "muted")
+	popupDesc.TextWrapped = true
+	popupDesc.TextYAlignment = Enum.TextYAlignment.Top
+
+	local function popupButton(label, x, primary)
+		local btn = make("TextButton", {
+			Position = UDim2.new(0, x, 0, 86),
+			Size = UDim2.new(0, 109, 0, 32),
+			BackgroundColor3 = primary and "submitBg" or "btn2",
+			BackgroundTransparency = primary and 0.12 or 0,
+			BorderSizePixel = 0,
+			AutoButtonColor = false,
+			Text = label,
+			TextSize = 13,
+			TextColor3 = primary and "submitText" or "text",
+			FontFace = ctx.FONT,
+		}, popupCard)
+		if primary then
+			round(btn, 8)
+		else
+			round(btn, 8, "stroke")
+		end
+		return btn
+	end
+
+	local cancelBtn = popupButton("Cancel", 22, false)
+	local confirmBtn = popupButton("Close", 139, true)
+
+	cancelBtn.MouseEnter:Connect(function()
+		if state.closing or not state.popupOpen then
+			return
+		end
+		tween(cancelBtn, 0.15, { BackgroundColor3 = C.btn2Hover })
+	end)
+	cancelBtn.MouseLeave:Connect(function()
+		if state.closing or not state.popupOpen then
+			return
+		end
+		tween(cancelBtn, 0.15, { BackgroundColor3 = C.btn2 })
+	end)
+	confirmBtn.MouseEnter:Connect(function()
+		if state.closing or not state.popupOpen then
+			return
+		end
+		tween(confirmBtn, 0.15, { BackgroundTransparency = 0 })
+	end)
+	confirmBtn.MouseLeave:Connect(function()
+		if state.closing or not state.popupOpen then
+			return
+		end
+		tween(confirmBtn, 0.15, { BackgroundTransparency = 0.12 })
+	end)
+
+	local popupItems = prep(popup)
+	fade(popupItems, 0)
+
+	local function show()
+		if not state.ready or state.popupOpen or state.closing then
+			return
+		end
+		state.popupOpen = true
+		popup.Visible = true
+		popupCard.Position = UDim2.new(0.5, 0, 0.5, 8)
+		if callbacks.onOpen then
+			callbacks.onOpen()
+		end
+		fade(popupItems, 1, 0.22)
+		tween(popupCard, 0.35, { Position = UDim2.new(0.5, 0, 0.5, 0) }, Enum.EasingStyle.Quint)
+	end
+
+	local function hide()
+		if not state.popupOpen or state.closing then
+			return
+		end
+		state.popupOpen = false
+		fade(popupItems, 0, 0.18)
+		task.delay(0.2, function()
+			if not state.popupOpen then
+				popup.Visible = false
+			end
+		end)
+	end
+
+	cancelBtn.MouseButton1Click:Connect(hide)
+	confirmBtn.MouseButton1Click:Connect(function()
+		if callbacks.onConfirm then
+			callbacks.onConfirm()
+		end
+	end)
+
+	return {
+		popup = popup,
+		items = popupItems,
+		show = show,
+		hide = hide,
+	}
+end
+
+return Dialog
+end
+
 __modules["components/window/notification"] = function()
 local Lighting = game:GetService("Lighting")
 
@@ -1389,8 +1541,11 @@ function UI.new(options)
 	local FOLDER = cfg.Folder
 	local LOGO = assetId(cfg.Logo) or Images.LOGO
 
-	-- Preloads every icon (+ the logo) as early as possible, so it's all cached and
-	-- ready by the time LoadingTime is over and the UI becomes interactive.
+	-- Preloads every icon (+ the logo) as early as possible. The Key System content
+	-- only becomes visible/interactive once this finishes (see `iconsPreloaded`
+	-- below), so icons and images are guaranteed to be loaded before the Key
+	-- System is shown to the user.
+	local iconsPreloaded = false
 	task.spawn(function()
 		pcall(function()
 			local list = {}
@@ -1402,11 +1557,13 @@ function UI.new(options)
 			table.insert(list, LOGO)
 			game:GetService("ContentProvider"):PreloadAsync(list)
 		end)
+		iconsPreloaded = true
 	end)
 
 	local INTRO_SIZE = tonumber(cfg.startintro_size) or 80
 	local LOADING_TIME = 3 -- fixed: icons/images preload during this time
 	local SQUARE_TIME = tonumber(cfg.squareintro_time) or 1.2
+	local SHOW_SQUARE_CONTORN = asBool(cfg.squarecontorn, true)
 
 	settings.tintLogo = asBool(cfg.Changelogocolor, true)
 	settings.tintIcons = asBool(cfg.Changeiconscolor, true)
@@ -1442,7 +1599,7 @@ function UI.new(options)
 
 	local SHOW_DISCORD_CARD = cardFlag(true, "Discord", "discord")
 	local SHOW_WEBSITE_CARD = cardFlag(HAS_WEBSITE, "Website", "website")
-	local SHOW_INFO_CARD = cardFlag(true, "Information", "information")
+	local SHOW_INFO_CARD = cardFlag(true, "Informations", "Information", "informations", "information")
 	-- Only Discord enabled (no Website card): it starts expanded to fill the free space
 	local SHOW_INTRO = cardFlag(true, "Intro", "intro")
 	local DISCORD_STARTS_OPEN = SHOW_DISCORD_CARD and not SHOW_WEBSITE_CARD and HAS_DISCORD
@@ -3238,7 +3395,9 @@ markTitleFont(hubTitle)
 			tween(canvas, 0.5, { BackgroundTransparency = 0 })
 			tween(decorGroup, 0.5, { GroupTransparency = 0 })
 			tween(introLogo, 0.5, { ImageTransparency = 0 })
-			tween(borderStroke, 0.5, { Transparency = 0.55 })
+			if SHOW_SQUARE_CONTORN then
+				tween(borderStroke, 0.5, { Transparency = 0.55 })
+			end
 			tween(shadow, 0.5, { ImageTransparency = 0.6 })
 			task.wait(SQUARE_TIME)
 
@@ -3266,6 +3425,12 @@ markTitleFont(hubTitle)
 			tween(decorGroup, 0.5, { GroupTransparency = 0 })
 			tween(shadow, 0.5, { ImageTransparency = 0.6 })
 			task.wait(0.25)
+		end
+
+		-- Make sure every icon/image finished preloading before the Key System
+		-- content itself is loaded and shown.
+		while not iconsPreloaded do
+			task.wait()
 		end
 
 		content.Visible = true
@@ -3297,7 +3462,8 @@ markTitleFont(hubTitle)
 	end
 	api.NotifStyle = api.SetNotifStyle
 	function api:GetMethod(entry)
-		return UI.GetMethod(entry)
+		UI.GetMethod(entry)
+		return self
 	end
 	function api:SetUIFont(font)
 		UI.SetUIFont(font)
@@ -3943,6 +4109,7 @@ return {
 	Intro = "true", -- "false": fade-in on open, fade-out on close
 	startintro_size = 80, -- initial square size
 	squareintro_time = 1.2,
+	squarecontorn = "true", -- "false": removes the outline around the intro square
 
 	-- Themes Config
 	Changelogocolor = true,
@@ -3955,11 +4122,12 @@ return {
 	-- Cards ("true" / "false")
 	Discord = "true",
 	Website = "false",
+	Informations = "true",
 
-	-- Notification style: "1" Stripe, "2" Pill, "3" Island, "4" Ring, "5" Solid
+	-- Notification style
 	NotifStyle = "1",
 
-	-- Games: { [PlaceId] = true } shows "Supported" in the Detected game card
+	-- Games
 	SupportedGames = {},
 
 	-- Script Execution
@@ -4000,6 +4168,12 @@ function KeySystem.SetNotifStyle(a, b)
 end
 
 KeySystem.NotifStyle = KeySystem.SetNotifStyle
+
+-- Works as KeySystem:GetMethod({...}) / KeySystem.GetMethod({...}), same as the
+-- other Set* helpers above: usable standalone, before KeySystem.new(...) exists.
+function KeySystem.GetMethod(a, b)
+	return import("components/window/ui").GetMethod(firstArg(a, b))
+end
 
 KeySystem.Jnkie = import("utilities/jnkie")
 
