@@ -1,4 +1,4 @@
-#!/usr/bin/env python3
+#!/usr/bin/env python3 k
 
 from pathlib import Path
 
@@ -64,6 +64,18 @@ KeySystem.NotifStyle = KeySystem.SetNotifStyle
 -- other Set* helpers above: usable standalone, before KeySystem.new(...) exists.
 function KeySystem.GetMethod(a, b)
 \treturn import("__ENTRY__").GetMethod(firstArg(a, b))
+end
+
+-- Works as KeySystem:SetUIFont("...") / KeySystem.SetUIFont("...")
+function KeySystem.SetUIFont(a, b)
+\timport("__ENTRY__").SetUIFont(firstArg(a, b))
+\treturn KeySystem
+end
+
+-- Works as KeySystem:SetTitleFont("...") / KeySystem.SetTitleFont("...")
+function KeySystem.SetTitleFont(a, b)
+\timport("__ENTRY__").SetTitleFont(firstArg(a, b))
+\treturn KeySystem
 end
 
 KeySystem.Jnkie = import("utilities/jnkie")
