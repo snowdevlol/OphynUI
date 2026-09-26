@@ -18,6 +18,7 @@ return {
 	-- Themes Config
 	Changelogocolor = true,
 	Changeiconscolor = true,
+	ChangeTheme = true, -- false: hides the moon (theme switch) icon
 
 	-- Section Config
 	discord_link = "",
