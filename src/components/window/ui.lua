@@ -803,8 +803,11 @@ function UI.new(options)
 	local FOLDER = cfg.Folder
 	local LOGO = assetId(cfg.Logo) or Images.LOGO
 
-	-- Preloads every icon (+ the logo) as early as possible, so it's all cached and
-	-- ready by the time LoadingTime is over and the UI becomes interactive.
+	-- Preloads every icon (+ the logo) as early as possible. The Key System content
+	-- only becomes visible/interactive once this finishes (see `iconsPreloaded`
+	-- below), so icons and images are guaranteed to be loaded before the Key
+	-- System is shown to the user.
+	local iconsPreloaded = false
 	task.spawn(function()
 		pcall(function()
 			local list = {}
@@ -816,11 +819,13 @@ function UI.new(options)
 			table.insert(list, LOGO)
 			game:GetService("ContentProvider"):PreloadAsync(list)
 		end)
+		iconsPreloaded = true
 	end)
 
 	local INTRO_SIZE = tonumber(cfg.startintro_size) or 80
 	local LOADING_TIME = 3 -- fixed: icons/images preload during this time
 	local SQUARE_TIME = tonumber(cfg.squareintro_time) or 1.2
+	local SHOW_SQUARE_CONTORN = asBool(cfg.squarecontorn, true)
 
 	settings.tintLogo = asBool(cfg.Changelogocolor, true)
 	settings.tintIcons = asBool(cfg.Changeiconscolor, true)
@@ -856,7 +861,7 @@ function UI.new(options)
 
 	local SHOW_DISCORD_CARD = cardFlag(true, "Discord", "discord")
 	local SHOW_WEBSITE_CARD = cardFlag(HAS_WEBSITE, "Website", "website")
-	local SHOW_INFO_CARD = cardFlag(true, "Information", "information")
+	local SHOW_INFO_CARD = cardFlag(true, "Informations", "Information", "informations", "information")
 	-- Only Discord enabled (no Website card): it starts expanded to fill the free space
 	local SHOW_INTRO = cardFlag(true, "Intro", "intro")
 	local DISCORD_STARTS_OPEN = SHOW_DISCORD_CARD and not SHOW_WEBSITE_CARD and HAS_DISCORD
@@ -2652,7 +2657,9 @@ markTitleFont(hubTitle)
 			tween(canvas, 0.5, { BackgroundTransparency = 0 })
 			tween(decorGroup, 0.5, { GroupTransparency = 0 })
 			tween(introLogo, 0.5, { ImageTransparency = 0 })
-			tween(borderStroke, 0.5, { Transparency = 0.55 })
+			if SHOW_SQUARE_CONTORN then
+				tween(borderStroke, 0.5, { Transparency = 0.55 })
+			end
 			tween(shadow, 0.5, { ImageTransparency = 0.6 })
 			task.wait(SQUARE_TIME)
 
@@ -2680,6 +2687,12 @@ markTitleFont(hubTitle)
 			tween(decorGroup, 0.5, { GroupTransparency = 0 })
 			tween(shadow, 0.5, { ImageTransparency = 0.6 })
 			task.wait(0.25)
+		end
+
+		-- Make sure every icon/image finished preloading before the Key System
+		-- content itself is loaded and shown.
+		while not iconsPreloaded do
+			task.wait()
 		end
 
 		content.Visible = true
@@ -2711,7 +2724,8 @@ markTitleFont(hubTitle)
 	end
 	api.NotifStyle = api.SetNotifStyle
 	function api:GetMethod(entry)
-		return UI.GetMethod(entry)
+		UI.GetMethod(entry)
+		return self
 	end
 	function api:SetUIFont(font)
 		UI.SetUIFont(font)
