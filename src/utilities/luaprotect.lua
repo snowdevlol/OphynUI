@@ -1,4 +1,4 @@
--- Based In LuaProtect Docs: https://docs.luaprotect.dev/api-keys-validate-public
+-- Based in LuaProtect Docs: https://docs.luaprotect.dev/api-keys-validate-public
 
 local HttpService = game:GetService("HttpService")
 local Players = game:GetService("Players")
@@ -45,7 +45,7 @@ function LuaProtect.new(config)
 	self.user = config.User or config.user or config.Username or config.username
 	self.scriptId = config.ScriptId or config.scriptId or config.Script
 	self.flow = config.Flow or config.flow
-	self.getKeyUrl = config.GetKeyUrl or config.getKeyUrl or config.URL or config.Url
+	self.website = config.Website or config.website
 	self.hwid = config.Hwid or config.HWID or config.hwid
 	self.requestSending = false
 
@@ -136,11 +136,15 @@ function LuaProtect:CheckKey(key)
 end
 
 function LuaProtect:GetKeyLink()
-	if type(self.getKeyUrl) == "string" and self.getKeyUrl ~= "" then
-		return self.getKeyUrl
+	local site = self.website
+	if type(site) ~= "string" or site == "" then
+		warn("LuaProtect Website is not set.")
+		return nil
 	end
-	warn("LuaProtect GetKeyUrl is not set.")
-	return nil
+	if not site:match("^https?://") then
+		site = "https://" .. site
+	end
+	return site
 end
 
 function LuaProtect:Validator()
