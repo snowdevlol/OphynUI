@@ -38,6 +38,8 @@ local function parseColor(value)
 	return nil
 end
 
+local Pages = {}
+
 function Pages.new(ctx)
 	local C, make, round = ctx.C, ctx.make, ctx.round
 	local tween, prep, fade = ctx.tween, ctx.prep, ctx.fade
@@ -875,18 +877,7 @@ function Pages.new(ctx)
 			if not page.Parent then
 				return false
 			end
-			local style = normalizeStyle(ctx.getTabsStyle and ctx.getTabsStyle())s/Icons the first time one is used:
---   local Tab = OphynWindow({ Title = "Main", Icon = "house" })
---   Tab:Section({ Title = "Section", Icon = "lucide:settings" })
---
---   Tab:Paragraph({
---       Title = "Paragraph",
---       Desc = "Test Paragraph",
---       Color = "Red", -- leave it blank to follow the theme
---       Buttons = { { Icon = "rbxassetid://...", Title = "Button 1", Callback = function() end } },
---   })
-
-
+			local style = normalizeStyle(ctx.getTabsStyle and ctx.getTabsStyle())
 			if style ~= tabsStyle then
 				tabsStyle = style
 				applyTabsStyle()
