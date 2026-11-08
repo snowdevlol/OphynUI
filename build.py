@@ -60,6 +60,15 @@ end
 
 KeySystem.NotifStyle = KeySystem.SetNotifStyle
 
+-- Works as KeySystem:SetTabsStyle("2") / KeySystem.SetTabsStyle("2") ("1": Tabs on the left,
+-- "2": Tabs in a row under the topbar), before or after KeySystem.new(...).
+function KeySystem.SetTabsStyle(a, b)
+\timport("__ENTRY__").SetTabsStyle(firstArg(a, b))
+\treturn KeySystem
+end
+
+KeySystem.TabsStyle = KeySystem.SetTabsStyle
+
 -- Works as KeySystem:GetMethod({...}) / KeySystem.GetMethod({...}), same as the
 -- other Set* helpers above: usable standalone, before KeySystem.new(...) exists.
 function KeySystem.GetMethod(a, b)
