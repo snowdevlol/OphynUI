@@ -69,6 +69,63 @@ local function parseImageSize(value)
 	return UDim2.new(0, d, 0, d)
 end
 
+-- "rbxgame://<placeId>" -> the game's current icon (rbxthumb GameIcon needs the universe id,
+-- so the place id is converted first; it is looked up once and cached).
+local HttpService = game:GetService("HttpService")
+local universeCache = {}
+
+local function httpGet(url)
+	local ok, body = pcall(function()
+		return game:HttpGet(url)
+	end)
+	if ok and type(body) == "string" and body ~= "" then
+		return body
+	end
+	ok, body = pcall(function()
+		return game:HttpGetAsync(url)
+	end)
+	if ok and type(body) == "string" and body ~= "" then
+		return body
+	end
+	return nil
+end
+
+local function universeOf(placeId)
+	if universeCache[placeId] then
+		return universeCache[placeId]
+	end
+	local universe
+	if tostring(game.PlaceId) == placeId then
+		universe = tostring(game.GameId)
+	else
+		for _, host in ipairs({ "apis.roblox.com", "apis.roproxy.com" }) do
+			local body = httpGet("https://" .. host .. "/universes/v1/places/" .. placeId .. "/universe")
+			if body then
+				local ok, data = pcall(function()
+					return HttpService:JSONDecode(body)
+				end)
+				if ok and type(data) == "table" and data.universeId then
+					universe = tostring(data.universeId)
+					break
+				end
+			end
+		end
+	end
+	if universe then
+		universeCache[placeId] = universe
+	end
+	return universe
+end
+
+-- Calls back with the image url (runs in its own thread, never blocks the UI).
+-- If the universe can't be found, the id is tried as a universe id directly.
+local function resolveGameIcon(id, callback)
+	task.spawn(function()
+		local universe = universeOf(id) or id
+		callback("rbxthumb://type=GameIcon&id=" .. universe .. "&w=256&h=256")
+	end)
+end
+
 local Pages = {}
 
 function Pages.new(ctx)
@@ -738,7 +795,8 @@ function Pages.new(ctx)
 		end
 
 		-- Tab:Paragraph({ Title, Desc, Image, ImageSize, Color, Buttons = { { Icon, Title, Callback } } })
-		-- Image: asset id ("rbxassetid://...", or just the number) or a Lucide icon name.
+		-- Image: "rbxassetid://..." (or just the number) / a Lucide icon name, or "rbxgame://<placeId>"
+		-- to use the game's current icon.
 		-- ImageSize: number, "48", "48x32", Vector2 or UDim2 (default 40x40).
 		function obj:Paragraph(p)
 			p = type(p) == "table" and p or {}
@@ -809,9 +867,14 @@ function Pages.new(ctx)
 				end
 			end
 
+			local imageToken = 0
 			local function applyImage(value)
-				local image = assetId(value)
-				if not image then
+				imageToken = imageToken + 1
+				local token = imageToken
+
+				local gameId = type(value) == "string" and value:match("^rbxgame://%s*(%d+)") or nil
+				local image = (not gameId) and assetId(value) or nil
+				if not image and not gameId then
 					if imageLabel then
 						imageLabel.Visible = false
 					end
@@ -828,11 +891,26 @@ function Pages.new(ctx)
 					}, top)
 					round(imageLabel, 6)
 				end
+				imageLabel.Visible = true
+				layoutImage()
+
+				if gameId then
+					-- game icon: keeps its own colors, shows up once the id is resolved
+					imageLabel.ImageColor3 = Color3.new(1, 1, 1)
+					imageLabel.ImageRectSize = Vector2.new(0, 0)
+					imageLabel.ImageRectOffset = Vector2.new(0, 0)
+					imageLabel.Image = ""
+					resolveGameIcon(gameId, function(url)
+						if token == imageToken and imageLabel.Parent then
+							imageLabel.Image = url
+						end
+					end)
+					return
+				end
+
 				-- Lucide icon names get tinted like the text; asset ids keep their own colors
 				imageLabel.ImageColor3 = Lucide.isName(image) and (onColor or "text") or Color3.new(1, 1, 1)
 				Lucide.apply(imageLabel, image)
-				imageLabel.Visible = true
-				layoutImage()
 			end
 			applyImage(p.Image)
 
