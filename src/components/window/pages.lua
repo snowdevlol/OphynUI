@@ -1,4 +1,8 @@
 
+local Lucide = import("utilities/lucide")
+
+local DEFAULT_IMAGE_SIZE = 40
+
 local NAMED_COLORS = {
 	red = Color3.fromRGB(229, 57, 53),
 	orange = Color3.fromRGB(245, 124, 0),
@@ -36,6 +40,33 @@ local function parseColor(value)
 		end
 	end
 	return nil
+end
+
+-- Accepts a number (square), a UDim2, a Vector2, or a string: "48", "48x48", "48,32".
+-- Returns a UDim2 in pixels (falls back to DEFAULT_IMAGE_SIZE).
+local function parseImageSize(value)
+	local d = DEFAULT_IMAGE_SIZE
+	if typeof(value) == "UDim2" then
+		return value
+	end
+	if typeof(value) == "Vector2" then
+		return UDim2.new(0, value.X, 0, value.Y)
+	end
+	if type(value) == "number" then
+		return UDim2.new(0, value, 0, value)
+	end
+	if type(value) == "string" then
+		local nums = {}
+		for n in value:gmatch("%d+%.?%d*") do
+			nums[#nums + 1] = tonumber(n)
+		end
+		if #nums == 1 then
+			return UDim2.new(0, nums[1], 0, nums[1])
+		elseif #nums >= 2 then
+			return UDim2.new(0, nums[1], 0, nums[2])
+		end
+	end
+	return UDim2.new(0, d, 0, d)
 end
 
 local Pages = {}
@@ -706,7 +737,9 @@ function Pages.new(ctx)
 			return section
 		end
 
-		-- Tab:Paragraph({ Title, Desc, Color, Buttons = { { Icon, Title, Callback } } })
+		-- Tab:Paragraph({ Title, Desc, Image, ImageSize, Color, Buttons = { { Icon, Title, Callback } } })
+		-- Image: asset id ("rbxassetid://...", or just the number) or a Lucide icon name.
+		-- ImageSize: number, "48", "48x32", Vector2 or UDim2 (default 40x40).
 		function obj:Paragraph(p)
 			p = type(p) == "table" and p or {}
 			local color = parseColor(p.Color) -- nil: follows the theme
@@ -733,6 +766,76 @@ function Pages.new(ctx)
 				SortOrder = Enum.SortOrder.LayoutOrder,
 			}, box)
 
+			-- top row: [image] [title + desc]
+			local top = make("Frame", {
+				Name = "Main",
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				LayoutOrder = 1,
+			}, box)
+			make("UIListLayout", {
+				FillDirection = Enum.FillDirection.Horizontal,
+				Padding = UDim.new(0, 10),
+				VerticalAlignment = Enum.VerticalAlignment.Top,
+				SortOrder = Enum.SortOrder.LayoutOrder,
+			}, top)
+
+			local IMAGE_GAP = 10
+			local imageSize = parseImageSize(p.ImageSize)
+			local imageLabel
+
+			local textCol = make("Frame", {
+				Name = "Text",
+				Size = UDim2.new(1, 0, 0, 0),
+				AutomaticSize = Enum.AutomaticSize.Y,
+				BackgroundTransparency = 1,
+				BorderSizePixel = 0,
+				LayoutOrder = 2,
+			}, top)
+			make("UIListLayout", {
+				Padding = UDim.new(0, 6),
+				SortOrder = Enum.SortOrder.LayoutOrder,
+			}, textCol)
+
+			-- keeps the text column next to the image (full width when there is no image)
+			local function layoutImage()
+				if imageLabel and imageLabel.Visible then
+					imageLabel.Size = imageSize
+					textCol.Size = UDim2.new(1, -(imageSize.X.Offset + IMAGE_GAP), 0, 0)
+				else
+					textCol.Size = UDim2.new(1, 0, 0, 0)
+				end
+			end
+
+			local function applyImage(value)
+				local image = assetId(value)
+				if not image then
+					if imageLabel then
+						imageLabel.Visible = false
+					end
+					layoutImage()
+					return
+				end
+				if not imageLabel then
+					imageLabel = make("ImageLabel", {
+						Name = "Image",
+						BackgroundTransparency = 1,
+						BorderSizePixel = 0,
+						ScaleType = Enum.ScaleType.Fit,
+						LayoutOrder = 1,
+					}, top)
+					round(imageLabel, 6)
+				end
+				-- Lucide icon names get tinted like the text; asset ids keep their own colors
+				imageLabel.ImageColor3 = Lucide.isName(image) and (onColor or "text") or Color3.new(1, 1, 1)
+				Lucide.apply(imageLabel, image)
+				imageLabel.Visible = true
+				layoutImage()
+			end
+			applyImage(p.Image)
+
 			local function paragraphLabel(layoutOrder, size, font, textColor, str, transparency)
 				return make("TextLabel", {
 					Size = UDim2.new(1, 0, 0, 0),
@@ -749,7 +852,7 @@ function Pages.new(ctx)
 					FontFace = font,
 					LayoutOrder = layoutOrder,
 					Visible = str ~= "",
-				}, box)
+				}, textCol)
 			end
 
 			local titleText = p.Title ~= nil and tostring(p.Title) or ""
@@ -765,7 +868,7 @@ function Pages.new(ctx)
 					AutomaticSize = Enum.AutomaticSize.Y,
 					BackgroundTransparency = 1,
 					BorderSizePixel = 0,
-					LayoutOrder = 3,
+					LayoutOrder = 2,
 				}, box)
 				make("UIListLayout", {
 					FillDirection = Enum.FillDirection.Horizontal,
@@ -857,6 +960,15 @@ function Pages.new(ctx)
 			function paragraph:SetDesc(str)
 				descLabel.Text = tostring(str)
 				descLabel.Visible = descLabel.Text ~= ""
+				return self
+			end
+			function paragraph:SetImage(value)
+				applyImage(value)
+				return self
+			end
+			function paragraph:SetImageSize(value)
+				imageSize = parseImageSize(value)
+				layoutImage()
 				return self
 			end
 			function paragraph:Destroy()
