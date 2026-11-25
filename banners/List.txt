@@ -14,3 +14,7 @@ Window Banner = "https://raw.githubusercontent.com/snowdevlol/OphynUI/refs/heads
 
 Tabs1 = "https://raw.githubusercontent.com/snowdevlol/OphynUI/refs/heads/main/banners/45%20Sem%20T%C3%ADtulo_20261006001828.png"
 Tabs2 = "https://raw.githubusercontent.com/snowdevlol/OphynUI/refs/heads/main/banners/lv_0_20261006002122.jpg"
+
+services
+
+https://raw.githubusercontent.com/snowdevlol/OphynUI/refs/heads/main/banners/37%20Sem%20T%C3%ADtulo_20261125150919.png
