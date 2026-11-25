@@ -17,4 +17,4 @@ Tabs2 = "https://raw.githubusercontent.com/snowdevlol/OphynUI/refs/heads/main/ba
 
 services
 
-https://raw.githubusercontent.com/snowdevlol/OphynUI/refs/heads/main/banners/37%20Sem%20T%C3%ADtulo_20261125150919.png
+jnkie = https://raw.githubusercontent.com/snowdevlol/OphynUI/refs/heads/main/banners/37%20Sem%20T%C3%ADtulo_20261125150919.png
