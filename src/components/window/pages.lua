@@ -896,6 +896,7 @@ function Pages.new(ctx)
 
 				if gameId then
 					-- game icon: keeps its own colors, shows up once the id is resolved
+					ctx.unbind(imageLabel, "ImageColor3")
 					imageLabel.ImageColor3 = Color3.new(1, 1, 1)
 					imageLabel.ImageRectSize = Vector2.new(0, 0)
 					imageLabel.ImageRectOffset = Vector2.new(0, 0)
@@ -909,7 +910,19 @@ function Pages.new(ctx)
 				end
 
 				-- Lucide icon names get tinted like the text; asset ids keep their own colors
-				imageLabel.ImageColor3 = Lucide.isName(image) and (onColor or "text") or Color3.new(1, 1, 1)
+				-- (ImageColor3 can't take the role name "text" directly: it has to go through setRole,
+				-- otherwise Roblox errors with "Color3 expected, got string" and the icon never shows)
+				if Lucide.isName(image) then
+					if onColor then
+						ctx.unbind(imageLabel, "ImageColor3")
+						imageLabel.ImageColor3 = onColor
+					else
+						setRole(imageLabel, "ImageColor3", "text")
+					end
+				else
+					ctx.unbind(imageLabel, "ImageColor3")
+					imageLabel.ImageColor3 = Color3.new(1, 1, 1)
+				end
 				Lucide.apply(imageLabel, image)
 			end
 			applyImage(p.Image)
