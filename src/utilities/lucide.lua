@@ -223,19 +223,26 @@ local function preload(sheet)
 	end)
 end
 
+-- The pack is either a flat map { ["house"] = "rbxassetid://123" } (one asset per icon) or a
+-- table of sprites { Image, ImageRectSize, ImageRectPosition } (spritesheet format).
 local function findEntry(loaded, name)
-	local icons = loaded.Icons or loaded
+	local icons = loaded.Icons
 	if type(icons) ~= "table" then
+		icons = loaded
+	end
+	local function get(key)
+		local entry = icons[key]
+		local t = type(entry)
+		if t == "table" or t == "string" or t == "number" then
+			return entry
+		end
 		return nil
 	end
-	local entry = icons[name] or icons["lucide-" .. name]
-	if type(entry) ~= "table" and ALIASES[name] then
-		entry = icons[ALIASES[name]]
+	local entry = get(name) or get("lucide-" .. name)
+	if entry == nil and ALIASES[name] then
+		entry = get(ALIASES[name]) or get("lucide-" .. ALIASES[name])
 	end
-	if type(entry) == "table" then
-		return entry
-	end
-	return nil
+	return entry
 end
 
 -- Looks the icon up in a pack that is already loaded (never yields).
@@ -251,6 +258,16 @@ local function lookup(value)
 			warn('[Ophyn] unknown Lucide icon "' .. tostring(value) .. '"')
 		end
 		return nil
+	end
+
+	-- flat format: the entry itself is the asset of that one icon (whole image, no sprite rect)
+	if type(entry) ~= "table" then
+		local asset = toAsset(entry)
+		if type(asset) ~= "string" then
+			return nil
+		end
+		preload(asset)
+		return { Image = asset, RectSize = Vector2.new(0, 0), RectOffset = Vector2.new(0, 0) }
 	end
 
 	local sheet = entry.Image
