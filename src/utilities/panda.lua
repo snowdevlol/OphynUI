@@ -1,4 +1,4 @@
--- thx poik3 for fixing this, all credits go for him c:
+-- thx poik3 for fixing this, all credits for this go to him c:
 -- poik3 repo https://raw.githubusercontent.com/poikjgfd3/OphynPlus/refs/heads/main/panda.lua
 
 local Http = import("utilities/http")
