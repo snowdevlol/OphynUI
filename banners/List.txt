@@ -1,4 +1,4 @@
-Carmin = "https://raw.githubusercontent.com/snowdevlol/OphynUI/refs/heads/main/banners/1789944237038.png"
+Carmim = "https://raw.githubusercontent.com/snowdevlol/OphynUI/refs/heads/main/banners/1789944237038.png"
 Amethyst = "https://raw.githubusercontent.com/snowdevlol/OphynUI/refs/heads/main/banners/1789944254601.png"
 Indigo = "https://raw.githubusercontent.com/snowdevlol/OphynUI/refs/heads/main/banners/1789944284035.png"
 Amber = "https://raw.githubusercontent.com/snowdevlol/OphynUI/refs/heads/main/banners/1789944306984.png"
